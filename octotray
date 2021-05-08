@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+
+# OctoTray Linux Qt System Tray OctoPrint client
+# depends on:
+# - python-pyqt5
+# - curl
+# - xdg-open
+
+import json
+import subprocess
+import sys
+import os
+import threading
+import time
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox
+from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtCore import QCoreApplication, QSettings
+
+class OctoTray():
+    name = "OctoTray"
+    vendor = "xythobuz"
+    version = "0.1"
+
+    iconPath = "/usr/share/pixmaps/"
+    iconName = "octotray_icon.png"
+
+    # 0=host, 1=key
+    # (2=method, 3=menu, 4=on-action, 5=off-action, 6=web-action)
+    printers = [
+        [ "PRINTER_HOST_HERE", "PRINTER_API_KEY_HERE" ]
+    ]
+    
+    statesWithWarning = [
+        "Printing", "Pausing", "Paused"
+    ]
+
+    def __init__(self):
+        app = QtWidgets.QApplication(sys.argv)
+        QCoreApplication.setApplicationName(self.name)
+
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            print("System Tray is not available on this platform!")
+            sys.exit(0)
+
+        self.menu = QMenu()
+
+        for p in self.printers:
+            method = self.getMethod(p[0], p[1])
+            print("Printer " + p[0] + " has method " + method)
+            p.append(method)
+            if method == "unknown":
+                continue
+
+            menu = QMenu(self.getName(p[0], p[1]))
+            p.append(menu)
+            self.menu.addMenu(menu)
+
+            action = QAction("Turn on")
+            action.triggered.connect(lambda chk, x=p: self.printerOnAction(x))
+            p.append(action)
+            menu.addAction(action)
+
+            action = QAction("Turn off")
+            action.triggered.connect(lambda chk, x=p: self.printerOffAction(x))
+            p.append(action)
+            menu.addAction(action)
+
+            action = QAction("Open Web UI")
+            action.triggered.connect(lambda chk, x=p: self.printerWebAction(x))
+            p.append(action)
+            menu.addAction(action)
+
+        self.quitAction = QAction("&Quit")
+        self.quitAction.triggered.connect(self.exit)
+        self.menu.addAction(self.quitAction)
+
+        iconPathName = ""
+        if os.path.isfile(self.iconName):
+            iconPathName = self.iconName
+        elif os.path.isfile(self.iconPath + self.iconName):
+            iconPathName = self.iconPath + self.iconName
+        else:
+            print("no icon found")
+
+        icon = QIcon()
+        if iconPathName != "":
+            pic = QPixmap(32, 32)
+            pic.load(iconPathName)
+            icon = QIcon(pic)
+
+        trayIcon = QSystemTrayIcon(icon)
+        trayIcon.setToolTip(self.name + " " + self.version)
+        trayIcon.setContextMenu(self.menu)
+        trayIcon.setVisible(True)
+
+        sys.exit(app.exec_())
+
+    def openBrowser(self, url):
+        os.system("xdg-open http://" + url)
+
+    def sendRequest(self, host, headers, path, content = None):
+        cmdline = 'curl -s'
+        for h in headers:
+            cmdline += " -H \"" + h + "\""
+        if content == None:
+            cmdline += " -X GET"
+        else:
+            cmdline += " -X POST"
+            cmdline += " -d '" + content + "'"
+        cmdline += " http://" + host + "/api/" + path
+        r = subprocess.run(cmdline, shell=True, capture_output=True, timeout=10, text=True)
+        return r.stdout
+
+    def sendPostRequest(self, host, key, path, content):
+        headers = [ "Content-Type: application/json",
+                   "X-Api-Key: " + key ]
+        return self.sendRequest(host, headers, path, content)
+
+    def sendGetRequest(self, host, key, path):
+        headers = [ "X-Api-Key: " + key ]
+        return self.sendRequest(host, headers, path)
+
+    def getStatus(self, host, key):
+        r = self.sendGetRequest(host, key, "job")
+        try:
+            rd = json.loads(r)
+            if "state" in rd:
+                return rd["state"]
+        except json.JSONDecodeError:
+            pass
+        return "Unknown"
+
+    def getName(self, host, key):
+        r = self.sendGetRequest(host, key, "printerprofiles")
+        try:
+            rd = json.loads(r)
+            if "profiles" in rd:
+                p = next(iter(rd["profiles"]))
+                if "name" in rd["profiles"][p]:
+                    return rd["profiles"][p]["name"]
+        except json.JSONDecodeError:
+            pass
+        return host
+
+    def getMethod(self, host, key):
+        r = self.sendGetRequest(host, key, "plugin/psucontrol")
+        try:
+            rd = json.loads(r)
+            if "isPSUOn" in rd:
+                return "psucontrol"
+        except json.JSONDecodeError:
+            pass
+
+        r = self.sendGetRequest(host, key, "system/commands/custom")
+        try:
+            rd = json.loads(r)
+            for c in rd:
+                if "action" in c:
+                    if (c["action"] == "all off") or (c["action"] == "all on"):
+                        return "system"
+        except json.JSONDecodeError:
+            pass
+
+        return "unknown"
+
+    def setPSUControl(self, host, key, state):
+        cmd = "turnPSUOff"
+        if state:
+            cmd = "turnPSUOn"
+        return self.sendPostRequest(host, key, "plugin/psucontrol", '{ "command":"' + cmd + '" }')
+
+    def setSystemCommand(self, host, key, state):
+        cmd = "all%20off"
+        if state:
+            cmd = "all%20on"
+        return self.sendPostRequest(host, key, "system/commands/custom/" + cmd, '')
+
+    def setPrinter(self, host, key, method, state):
+        if method == "psucontrol":
+            return self.setPSUControl(host, key, state)
+        elif method == "system":
+            return self.setSystemCommand(host, key, state)
+        else:
+            return "error"
+
+    def exit(self):
+        QCoreApplication.quit()
+
+    def printerOnAction(self, item):
+        self.setPrinter(item[0], item[1], item[2], True)
+
+    def printerOffAction(self, item):
+        state = self.getStatus(item[0], item[1])
+        if state in self.statesWithWarning:
+            if self.showdialog() == True:
+                self.setPrinter(item[0], item[1], item[2], False)
+        else:
+            self.setPrinter(item[0], item[1], item[2], False)
+
+    def printerWebAction(self, item):
+        self.openBrowser(item[0])
+
+    def showdialog(self):
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Warning)
+
+        msg.setWindowTitle("OctoTray Warning")
+        msg.setText("The printer seems to be running currently!")
+        msg.setInformativeText("Do you really want to turn it off?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+
+        retval = msg.exec_()
+        if retval == QMessageBox.Yes:
+            return True
+        return False
+
+if __name__ == "__main__":
+    tray = OctoTray()

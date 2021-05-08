@@ -1,0 +1,23 @@
+# Maintainer: Thomas Buck <thomas@xythobuz.de>
+pkgname=OctoTray
+pkgver=0.1
+pkgrel=1
+pkgdesc="Control OctoPrint instances from system tray"
+arch=('any')
+license=('unknown')
+depends=('python-pyqt5')
+source=("octotray"
+        "octotray_icon.png"
+        "de.xythobuz.octotray.desktop")
+md5sums=(SKIP
+         SKIP
+         SKIP)
+
+package() {
+	mkdir -p "$pkgdir/usr/bin"
+	cp octotray "$pkgdir/usr/bin/octotray"
+	mkdir -p "$pkgdir/usr/share/pixmaps"
+	cp octotray_icon.png "$pkgdir/usr/share/pixmaps/octotray_icon.png"
+	mkdir -p "$pkgdir/usr/share/applications"
+	cp de.xythobuz.octotray.desktop "$pkgdir/usr/share/applications/de.xythobuz.octotray.desktop"
+}
