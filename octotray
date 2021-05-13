@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # OctoTray Linux Qt System Tray OctoPrint client
+#
 # depends on:
 # - python-pyqt5
 # - curl
@@ -26,7 +27,7 @@ class OctoTray():
     iconName = "octotray_icon.png"
 
     # 0=host, 1=key
-    # (2=method, 3=menu, 4=on-action, 5=off-action, 6=web-action)
+    # (2=method, 3=menu, 4...=actions)
     printers = [
         [ "PRINTER_HOST_HERE", "PRINTER_API_KEY_HERE" ]
     ]
@@ -66,6 +67,11 @@ class OctoTray():
             p.append(action)
             menu.addAction(action)
 
+            action = QAction("Get Status")
+            action.triggered.connect(lambda chk, x=p: self.printerStatusAction(x))
+            p.append(action)
+            menu.addAction(action)
+
             action = QAction("Open Web UI")
             action.triggered.connect(lambda chk, x=p: self.printerWebAction(x))
             p.append(action)
@@ -99,6 +105,30 @@ class OctoTray():
     def openBrowser(self, url):
         os.system("xdg-open http://" + url)
 
+    def showDialog(self, title, text1, text2, question, warning):
+        msg = QMessageBox()
+
+        if warning:
+            msg.setIcon(QMessageBox.Warning)
+        else:
+            msg.setIcon(QMessageBox.Information)
+
+        msg.setWindowTitle(title)
+        msg.setText(text1)
+
+        if text2 is not None:
+            msg.setInformativeText(text2)
+
+        if question:
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        else:
+            msg.setStandardButtons(QMessageBox.Ok)
+
+        retval = msg.exec_()
+        if retval == QMessageBox.Yes:
+            return True
+        return False
+
     def sendRequest(self, host, headers, path, content = None):
         cmdline = 'curl -s'
         for h in headers:
@@ -121,12 +151,22 @@ class OctoTray():
         headers = [ "X-Api-Key: " + key ]
         return self.sendRequest(host, headers, path)
 
-    def getStatus(self, host, key):
+    def getState(self, host, key):
         r = self.sendGetRequest(host, key, "job")
         try:
             rd = json.loads(r)
             if "state" in rd:
                 return rd["state"]
+        except json.JSONDecodeError:
+            pass
+        return "Unknown"
+
+    def getProgress(self, host, key):
+        r = self.sendGetRequest(host, key, "job")
+        try:
+            rd = json.loads(r)
+            if "progress" in rd:
+                return rd["progress"]
         except json.JSONDecodeError:
             pass
         return "Unknown"
@@ -191,9 +231,9 @@ class OctoTray():
         self.setPrinter(item[0], item[1], item[2], True)
 
     def printerOffAction(self, item):
-        state = self.getStatus(item[0], item[1])
+        state = self.getState(item[0], item[1])
         if state in self.statesWithWarning:
-            if self.showdialog() == True:
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to turn it off?", True, True) == True:
                 self.setPrinter(item[0], item[1], item[2], False)
         else:
             self.setPrinter(item[0], item[1], item[2], False)
@@ -201,19 +241,20 @@ class OctoTray():
     def printerWebAction(self, item):
         self.openBrowser(item[0])
 
-    def showdialog(self):
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Warning)
-
-        msg.setWindowTitle("OctoTray Warning")
-        msg.setText("The printer seems to be running currently!")
-        msg.setInformativeText("Do you really want to turn it off?")
-        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-
-        retval = msg.exec_()
-        if retval == QMessageBox.Yes:
-            return True
-        return False
+    def printerStatusAction(self, item):
+        progress = self.getProgress(item[0], item[1])
+        s = ""
+        warning = False
+        if ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress) and (progress["completion"] != None) and (progress["printTime"] != None) and (progress["printTimeLeft"] != None):
+            s = "%.1f%% Completion\n" % progress["completion"]
+            s += "Printing since " + time.strftime("%H:%M:%S", time.gmtime(progress["printTime"])) + "\n"
+            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTimeLeft"])) + " left\n"
+        elif ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress):
+            s = "No job is currently running"
+        else:
+            s = "Could not read printer status!"
+            warning = True
+        self.showDialog("OctoTray Status", s, None, False, warning)
 
 if __name__ == "__main__":
     tray = OctoTray()
