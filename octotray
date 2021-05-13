@@ -6,6 +6,10 @@
 # - python-pyqt5
 # - curl
 # - xdg-open
+#
+# see also:
+# https://doc.qt.io/qt-5/qtwidgets-widgets-imageviewer-example.html
+# https://stackoverflow.com/a/22618496
 
 import json
 import subprocess
@@ -13,15 +17,127 @@ import sys
 import os
 import threading
 import time
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtCore import QCoreApplication, QSettings
+from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
+from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout
+from PyQt5.QtGui import QIcon, QPixmap, QImageReader
+from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt
+
+class AspectRatioPixmapLabel(QLabel):
+    def __init__(self, *args, **kwargs):
+        super(AspectRatioPixmapLabel, self).__init__(*args, **kwargs)
+        self.setMinimumSize(1, 1)
+        self.setScaledContents(False)
+        self.pix = QPixmap(0, 0)
+
+    def setPixmap(self, p):
+        self.pix = p
+        super(AspectRatioPixmapLabel, self).setPixmap(self.scaledPixmap())
+
+    def heightForWidth(self, width):
+        if self.pix.isNull():
+            return self.height()
+        else:
+            return (self.pix.height() * width) / self.pix.width()
+
+    def sizeHint(self):
+        w = self.width()
+        return QSize(int(w), int(self.heightForWidth(w)))
+
+    def scaledPixmap(self):
+        return self.pix.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    def resizeEvent(self, e):
+        if not self.pix.isNull():
+            super(AspectRatioPixmapLabel, self).setPixmap(self.scaledPixmap())
+
+class CamWindow(QWidget):
+    reloadDelayDefault = 1000 # in ms
+    addSize = 100
+    reloadOn = True
+
+    def __init__(self, parent, name, icon, app, manager, host, *args, **kwargs):
+        super(CamWindow, self).__init__(*args, **kwargs)
+        self.url = "http://" + host + ":8080/?action=snapshot"
+
+        self.app = app
+        self.parent = parent
+        self.manager = manager
+        self.manager.finished.connect(self.handleResponse)
+
+        self.setWindowTitle(name + " Webcam Stream")
+        self.setWindowIcon(icon)
+
+        box = QVBoxLayout()
+        self.setLayout(box)
+
+        label = QLabel(self.url)
+        box.addWidget(label, 0)
+        box.setAlignment(label, Qt.AlignHCenter)
+
+        self.img = AspectRatioPixmapLabel()
+        self.img.setPixmap(QPixmap(640, 480))
+        box.addWidget(self.img, 1)
+
+        slide = QHBoxLayout()
+        box.addLayout(slide, 0)
+
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(2000)
+        self.slider.setTickInterval(100)
+        self.slider.setPageStep(100)
+        self.slider.setSingleStep(100)
+        self.slider.setTickPosition(QSlider.TicksBelow)
+        self.slider.setValue(self.reloadDelayDefault)
+        self.slider.valueChanged.connect(self.sliderChanged)
+        slide.addWidget(self.slider, 1)
+
+        self.slideLabel = QLabel(str(self.reloadDelayDefault) + "ms")
+        slide.addWidget(self.slideLabel, 0)
+
+        size = self.size()
+        size.setHeight(size.height() + self.addSize)
+        self.resize(size)
+
+        self.loadImage()
+
+    def sliderChanged(self):
+        self.slideLabel.setText(str(self.slider.value()) + "ms")
+
+    def closeEvent(self, event):
+        self.reloadOn = False
+        self.url = ""
+        self.parent.removeWebcamWindow(self)
+
+    def scheduleLoad(self):
+        if self.reloadOn:
+            QTimer.singleShot(self.slider.value(), self.loadImage)
+
+    def loadImage(self):
+        url = QUrl(self.url)
+        request = QtNetwork.QNetworkRequest(url)
+        self.manager.get(request)
+
+    def handleResponse(self, reply):
+        if reply.url().url() == self.url:
+            if reply.error() == QtNetwork.QNetworkReply.NoError:
+                reader = QImageReader(reply)
+                reader.setAutoTransform(True)
+                image = reader.read()
+                if image != None:
+                    if image.colorSpace().isValid():
+                        image.convertToColorSpace(QColorSpace.SRgb)
+                    self.img.setPixmap(QPixmap.fromImage(image))
+                    self.scheduleLoad()
+                else:
+                    print("Error decoding image: " + reader.errorString())
+            else:
+                print("Error loading image: " + reply.errorString())
 
 class OctoTray():
     name = "OctoTray"
     vendor = "xythobuz"
-    version = "0.1"
+    version = "0.2"
 
     iconPath = "/usr/share/pixmaps/"
     iconName = "octotray_icon.png"
@@ -36,13 +152,17 @@ class OctoTray():
         "Printing", "Pausing", "Paused"
     ]
 
+    camWindows = []
+
     def __init__(self):
-        app = QtWidgets.QApplication(sys.argv)
+        self.app = QtWidgets.QApplication(sys.argv)
         QCoreApplication.setApplicationName(self.name)
 
         if not QSystemTrayIcon.isSystemTrayAvailable():
             print("System Tray is not available on this platform!")
             sys.exit(0)
+
+        self.manager = QtNetwork.QNetworkAccessManager()
 
         self.menu = QMenu()
 
@@ -72,6 +192,11 @@ class OctoTray():
             p.append(action)
             menu.addAction(action)
 
+            action = QAction("Show Webcam")
+            action.triggered.connect(lambda chk, x=p: self.printerWebcamAction(x))
+            p.append(action)
+            menu.addAction(action)
+
             action = QAction("Open Web UI")
             action.triggered.connect(lambda chk, x=p: self.printerWebAction(x))
             p.append(action)
@@ -89,18 +214,18 @@ class OctoTray():
         else:
             print("no icon found")
 
-        icon = QIcon()
+        self.icon = QIcon()
         if iconPathName != "":
             pic = QPixmap(32, 32)
             pic.load(iconPathName)
-            icon = QIcon(pic)
+            self.icon = QIcon(pic)
 
-        trayIcon = QSystemTrayIcon(icon)
+        trayIcon = QSystemTrayIcon(self.icon)
         trayIcon.setToolTip(self.name + " " + self.version)
         trayIcon.setContextMenu(self.menu)
         trayIcon.setVisible(True)
 
-        sys.exit(app.exec_())
+        sys.exit(self.app.exec_())
 
     def openBrowser(self, url):
         os.system("xdg-open http://" + url)
@@ -255,6 +380,23 @@ class OctoTray():
             s = "Could not read printer status!"
             warning = True
         self.showDialog("OctoTray Status", s, None, False, warning)
+
+    def printerWebcamAction(self, item):
+        window = CamWindow(self, self.name, self.icon, self.app, self.manager, item[0])
+        self.camWindows.append(window)
+
+        screenGeometry = QDesktopWidget().screenGeometry()
+        width = screenGeometry.width()
+        height = screenGeometry.height()
+        x = (width - window.width()) / 2
+        y = (height - window.height()) / 2
+        window.setGeometry(int(x), int(y), int(window.width()), int(window.height()))
+
+        window.show()
+        window.activateWindow()
+
+    def removeWebcamWindow(self, window):
+        self.camWindows.remove(window)
 
 if __name__ == "__main__":
     tray = OctoTray()
