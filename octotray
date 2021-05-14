@@ -4,19 +4,17 @@
 #
 # depends on:
 # - python-pyqt5
-# - curl
 #
 # see also:
 # https://doc.qt.io/qt-5/qtwidgets-widgets-imageviewer-example.html
 # https://stackoverflow.com/a/22618496
 
 import json
-import subprocess
 import sys
 import os
-import threading
 import time
 import urllib.parse
+import urllib.request
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout
 from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices
@@ -307,25 +305,31 @@ class OctoTray():
             return False
 
     def sendRequest(self, host, headers, path, content = None):
-        cmdline = 'curl -s -m 1'
-        for h in headers:
-            cmdline += " -H \"" + h + "\""
+        url = "http://" + host + "/api/" + path
         if content == None:
-            cmdline += " -X GET"
+            request = urllib.request.Request(url, None, headers)
         else:
-            cmdline += " -X POST"
-            cmdline += " -d '" + content + "'"
-        cmdline += " http://" + host + "/api/" + path
-        r = subprocess.run(cmdline, shell=True, capture_output=True, timeout=10, text=True)
-        return r.stdout
+            data = content.encode('ascii')
+            request = urllib.request.Request(url, data, headers)
+        try:
+            with urllib.request.urlopen(request, None, 1.0) as response:
+                text = response.read()
+                return text
+        except urllib.error.HTTPError:
+            pass
+        return ""
 
     def sendPostRequest(self, host, key, path, content):
-        headers = [ "Content-Type: application/json",
-                   "X-Api-Key: " + key ]
+        headers = {
+            "Content-Type": "application/json",
+            "X-Api-Key": key
+        }
         return self.sendRequest(host, headers, path, content)
 
     def sendGetRequest(self, host, key, path):
-        headers = [ "X-Api-Key: " + key ]
+        headers = {
+            "X-Api-Key": key
+        }
         return self.sendRequest(host, headers, path)
 
     def getTemperatureString(self, host, key):
