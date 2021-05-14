@@ -1,6 +1,6 @@
 # Maintainer: Thomas Buck <thomas@xythobuz.de>
 pkgname=OctoTray
-pkgver=0.1
+pkgver=0.2
 pkgrel=1
 pkgdesc="Control OctoPrint instances from system tray"
 arch=('any')

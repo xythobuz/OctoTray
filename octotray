@@ -17,6 +17,7 @@ import sys
 import os
 import threading
 import time
+import urllib.parse
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout
 from PyQt5.QtGui import QIcon, QPixmap, QImageReader
@@ -52,17 +53,19 @@ class AspectRatioPixmapLabel(QLabel):
 
 class CamWindow(QWidget):
     reloadDelayDefault = 1000 # in ms
+    statusDelay = 10 * 1000 # in ms
     addSize = 100
     reloadOn = True
 
-    def __init__(self, parent, name, icon, app, manager, host, *args, **kwargs):
+    def __init__(self, parent, name, icon, app, manager, printer, *args, **kwargs):
         super(CamWindow, self).__init__(*args, **kwargs)
-        self.url = "http://" + host + ":8080/?action=snapshot"
-        self.host = host
         self.app = app
-        self.parent = parent
         self.manager = manager
         self.manager.finished.connect(self.handleResponse)
+        self.parent = parent
+        self.printer = printer
+        self.host = self.printer[0]
+        self.url = "http://" + self.host + ":8080/?action=snapshot"
 
         self.setWindowTitle(name + " Webcam Stream")
         self.setWindowIcon(icon)
@@ -95,11 +98,16 @@ class CamWindow(QWidget):
         self.slideLabel = QLabel(str(self.reloadDelayDefault) + "ms")
         slide.addWidget(self.slideLabel, 0)
 
+        self.statusLabel = QLabel("Status: unavailable")
+        box.addWidget(self.statusLabel, 0)
+        box.setAlignment(label, Qt.AlignHCenter)
+
         size = self.size()
         size.setHeight(size.height() + self.addSize)
         self.resize(size)
 
         self.loadImage()
+        self.loadStatus()
 
     def getHost(self):
         return self.host
@@ -112,14 +120,37 @@ class CamWindow(QWidget):
         self.url = ""
         self.parent.removeWebcamWindow(self)
 
-    def scheduleLoad(self):
+    def scheduleLoadImage(self):
         if self.reloadOn:
             QTimer.singleShot(self.slider.value(), self.loadImage)
+
+    def scheduleLoadStatus(self):
+        if self.reloadOn:
+            QTimer.singleShot(self.statusDelay, self.loadStatus)
 
     def loadImage(self):
         url = QUrl(self.url)
         request = QtNetwork.QNetworkRequest(url)
         self.manager.get(request)
+
+    def loadStatus(self):
+        s = "Status: "
+        t = self.parent.getTemperatureString(self.host, self.printer[1])
+        if len(t) > 0:
+            s += t
+        else:
+            s += "Unknown"
+
+        progress = self.parent.getProgress(self.host, self.printer[1])
+        if ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress) and (progress["completion"] != None) and (progress["printTime"] != None) and (progress["printTimeLeft"] != None):
+            s += " - %.1f%%" % progress["completion"]
+            s += " - runtime "
+            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTime"]))
+            s += " - "
+            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTimeLeft"])) + " left"
+
+        self.statusLabel.setText(s)
+        self.scheduleLoadStatus()
 
     def handleResponse(self, reply):
         if reply.url().url() == self.url:
@@ -131,7 +162,7 @@ class CamWindow(QWidget):
                     if image.colorSpace().isValid():
                         image.convertToColorSpace(QColorSpace.SRgb)
                     self.img.setPixmap(QPixmap.fromImage(image))
-                    self.scheduleLoad()
+                    self.scheduleLoadImage()
                 else:
                     print("Error decoding image: " + reader.errorString())
             else:
@@ -146,7 +177,7 @@ class OctoTray():
     iconName = "octotray_icon.png"
 
     # 0=host, 1=key
-    # (2=method, 3=menu, 4...=actions)
+    # (2=system-commands, 3=menu, 4...=actions)
     printers = [
         [ "PRINTER_HOST_HERE", "PRINTER_API_KEY_HERE" ]
     ]
@@ -162,33 +193,43 @@ class OctoTray():
         QCoreApplication.setApplicationName(self.name)
 
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            print("System Tray is not available on this platform!")
+            self.showDialog("OctoTray Error", "System Tray is not available on this platform!", "", False, False, True)
             sys.exit(0)
 
         self.manager = QtNetwork.QNetworkAccessManager()
-
         self.menu = QMenu()
 
+        unknownCount = 0
         for p in self.printers:
             method = self.getMethod(p[0], p[1])
             print("Printer " + p[0] + " has method " + method)
-            p.append(method)
             if method == "unknown":
+                unknownCount += 1
                 continue
+
+            commands = self.getSystemCommands(p[0], p[1])
+            p.append(commands)
 
             menu = QMenu(self.getName(p[0], p[1]))
             p.append(menu)
             self.menu.addMenu(menu)
 
-            action = QAction("Turn on")
-            action.triggered.connect(lambda chk, x=p: self.printerOnAction(x))
-            p.append(action)
-            menu.addAction(action)
+            if method == "psucontrol":
+                action = QAction("Turn On PSU")
+                action.triggered.connect(lambda chk, x=p: self.printerOnAction(x))
+                p.append(action)
+                menu.addAction(action)
 
-            action = QAction("Turn off")
-            action.triggered.connect(lambda chk, x=p: self.printerOffAction(x))
-            p.append(action)
-            menu.addAction(action)
+                action = QAction("Turn Off PSU")
+                action.triggered.connect(lambda chk, x=p: self.printerOffAction(x))
+                p.append(action)
+                menu.addAction(action)
+
+            for i in range(0, len(commands)):
+                action = QAction(commands[i].title())
+                action.triggered.connect(lambda chk, x=p, y=i: self.printerSystemCommandAction(x, y))
+                p.append(action)
+                menu.addAction(action)
 
             action = QAction("Get Status")
             action.triggered.connect(lambda chk, x=p: self.printerStatusAction(x))
@@ -205,6 +246,10 @@ class OctoTray():
             p.append(action)
             menu.addAction(action)
 
+        if (len(self.printers) <= 0) or (unknownCount >= len(self.printers)):
+            self.showDialog("OctoTray Error", "No printers available!", "", False, False, True)
+            sys.exit(0)
+
         self.quitAction = QAction("&Quit")
         self.quitAction.triggered.connect(self.exit)
         self.menu.addAction(self.quitAction)
@@ -215,13 +260,13 @@ class OctoTray():
         elif os.path.isfile(self.iconPath + self.iconName):
             iconPathName = self.iconPath + self.iconName
         else:
-            print("no icon found")
+            self.showDialog("OctoTray Error", "Icon file has not been found! found", "", False, False, True)
+            sys.exit(0)
 
         self.icon = QIcon()
-        if iconPathName != "":
-            pic = QPixmap(32, 32)
-            pic.load(iconPathName)
-            self.icon = QIcon(pic)
+        pic = QPixmap(32, 32)
+        pic.load(iconPathName)
+        self.icon = QIcon(pic)
 
         trayIcon = QSystemTrayIcon(self.icon)
         trayIcon.setToolTip(self.name + " " + self.version)
@@ -233,11 +278,15 @@ class OctoTray():
     def openBrowser(self, url):
         os.system("xdg-open http://" + url)
 
-    def showDialog(self, title, text1, text2, question, warning):
+    def showDialog(self, title, text1, text2 = "", question = False, warning = False, error = False):
         msg = QMessageBox()
 
-        if warning:
+        if error:
+            msg.setIcon(QMessageBox.Critical)
+        elif warning:
             msg.setIcon(QMessageBox.Warning)
+        elif question:
+            msg.setIcon(QMessageBox.Question)
         else:
             msg.setIcon(QMessageBox.Information)
 
@@ -255,10 +304,11 @@ class OctoTray():
         retval = msg.exec_()
         if retval == QMessageBox.Yes:
             return True
-        return False
+        else:
+            return False
 
     def sendRequest(self, host, headers, path, content = None):
-        cmdline = 'curl -s'
+        cmdline = 'curl -s -m 1'
         for h in headers:
             cmdline += " -H \"" + h + "\""
         if content == None:
@@ -278,6 +328,48 @@ class OctoTray():
     def sendGetRequest(self, host, key, path):
         headers = [ "X-Api-Key: " + key ]
         return self.sendRequest(host, headers, path)
+
+    def getTemperatureString(self, host, key):
+        r = self.sendGetRequest(host, key, "printer")
+        s = ""
+        try:
+            rd = json.loads(r)
+
+            if ("state" in rd) and ("text" in rd["state"]):
+                s += rd["state"]["text"]
+                if "temperature" in rd:
+                    s += " - "
+
+            if "temperature" in rd:
+                if "bed" in rd["temperature"]:
+                    if "actual" in rd["temperature"]["bed"]:
+                        s += "B"
+                        s += "%.1f" % rd["temperature"]["bed"]["actual"]
+                        if "target" in rd["temperature"]["bed"]:
+                            s += "/"
+                            s += "%.1f" % rd["temperature"]["bed"]["target"]
+                        s += " "
+
+                if "tool0" in rd["temperature"]:
+                    if "actual" in rd["temperature"]["tool0"]:
+                        s += "T"
+                        s += "%.1f" % rd["temperature"]["tool0"]["actual"]
+                        if "target" in rd["temperature"]["tool0"]:
+                            s += "/"
+                            s += "%.1f" % rd["temperature"]["tool0"]["target"]
+                        s += " "
+
+                if "tool1" in rd["temperature"]:
+                    if "actual" in rd["temperature"]["tool1"]:
+                        s += "T"
+                        s += "%.1f" % rd["temperature"]["tool1"]["actual"]
+                        if "target" in rd["temperature"]["tool1"]:
+                            s += "/"
+                            s += "%.1f" % rd["temperature"]["tool1"]["target"]
+                        s += " "
+        except json.JSONDecodeError:
+            pass
+        return s.strip()
 
     def getState(self, host, key):
         r = self.sendGetRequest(host, key, "job")
@@ -325,12 +417,31 @@ class OctoTray():
             rd = json.loads(r)
             for c in rd:
                 if "action" in c:
-                    if (c["action"] == "all off") or (c["action"] == "all on"):
-                        return "system"
+                    # we have some custom commands and no psucontrol
+                    # so lets try to use that instead of skipping
+                    # the printer completely with 'unknown'
+                    return "system"
         except json.JSONDecodeError:
             pass
 
         return "unknown"
+
+    def getSystemCommands(self, host, key):
+        l = []
+        r = self.sendGetRequest(host, key, "system/commands/custom")
+        try:
+            rd = json.loads(r)
+
+            if len(rd) > 0:
+                print("system commands available for " + host + ":")
+
+            for c in rd:
+                if "action" in c:
+                    print("  - " + c["action"])
+                    l.append(c["action"])
+        except json.JSONDecodeError:
+            pass
+        return l
 
     def setPSUControl(self, host, key, state):
         cmd = "turnPSUOff"
@@ -338,33 +449,33 @@ class OctoTray():
             cmd = "turnPSUOn"
         return self.sendPostRequest(host, key, "plugin/psucontrol", '{ "command":"' + cmd + '" }')
 
-    def setSystemCommand(self, host, key, state):
-        cmd = "all%20off"
-        if state:
-            cmd = "all%20on"
+    def setSystemCommand(self, host, key, cmd):
+        cmd = urllib.parse.quote(cmd)
         return self.sendPostRequest(host, key, "system/commands/custom/" + cmd, '')
-
-    def setPrinter(self, host, key, method, state):
-        if method == "psucontrol":
-            return self.setPSUControl(host, key, state)
-        elif method == "system":
-            return self.setSystemCommand(host, key, state)
-        else:
-            return "error"
 
     def exit(self):
         QCoreApplication.quit()
 
+    def printerSystemCommandAction(self, item, index):
+        if "off" in item[2][index].lower():
+            state = self.getState(item[0], item[1])
+            if state in self.statesWithWarning:
+                if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to run '" + item[2][index] + "'?", True, True) == True:
+                    self.setSystemCommand(item[0], item[1], item[2][index])
+                else:
+                    return
+        self.setSystemCommand(item[0], item[1], item[2][index])
+
     def printerOnAction(self, item):
-        self.setPrinter(item[0], item[1], item[2], True)
+        self.setPSUControl(item[0], item[1], True)
 
     def printerOffAction(self, item):
         state = self.getState(item[0], item[1])
         if state in self.statesWithWarning:
             if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to turn it off?", True, True) == True:
-                self.setPrinter(item[0], item[1], item[2], False)
+                self.setPSUControl(item[0], item[1], False)
         else:
-            self.setPrinter(item[0], item[1], item[2], False)
+            self.setPSUControl(item[0], item[1], False)
 
     def printerWebAction(self, item):
         self.openBrowser(item[0])
@@ -376,12 +487,15 @@ class OctoTray():
         if ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress) and (progress["completion"] != None) and (progress["printTime"] != None) and (progress["printTimeLeft"] != None):
             s = "%.1f%% Completion\n" % progress["completion"]
             s += "Printing since " + time.strftime("%H:%M:%S", time.gmtime(progress["printTime"])) + "\n"
-            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTimeLeft"])) + " left\n"
+            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTimeLeft"])) + " left"
         elif ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress):
             s = "No job is currently running"
         else:
             s = "Could not read printer status!"
             warning = True
+        t = self.getTemperatureString(item[0], item[1])
+        if len(t) > 0:
+            s += "\n" + t
         self.showDialog("OctoTray Status", s, None, False, warning)
 
     def printerWebcamAction(self, item):
@@ -391,7 +505,7 @@ class OctoTray():
                 cw.activateWindow()
                 return
 
-        window = CamWindow(self, self.name, self.icon, self.app, self.manager, item[0])
+        window = CamWindow(self, self.name, self.icon, self.app, self.manager, item)
         self.camWindows.append(window)
 
         screenGeometry = QDesktopWidget().screenGeometry()
