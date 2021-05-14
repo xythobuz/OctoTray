@@ -16,9 +16,74 @@ import time
 import urllib.parse
 import urllib.request
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
-from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout
+from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton
 from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices
-from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt
+from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt, QSettings
+
+class SettingsWindow(QWidget):
+    def __init__(self, parent, *args, **kwargs):
+        super(SettingsWindow, self).__init__(*args, **kwargs)
+        self.parent = parent
+
+        self.setWindowTitle(parent.name + " Settings")
+        self.setWindowIcon(parent.icon)
+
+        box = QVBoxLayout()
+        self.setLayout(box)
+
+        buttons = QHBoxLayout()
+        box.addLayout(buttons, 0)
+
+        self.add = QPushButton("&Add Printer")
+        self.add.clicked.connect(self.addPrinter)
+        buttons.addWidget(self.add)
+
+        self.remove = QPushButton("&Remove Printer")
+        self.remove.clicked.connect(self.removePrinter)
+        buttons.addWidget(self.remove)
+
+        printers = self.parent.readSettings()
+        self.rows = len(printers)
+        self.table = QTableWidget(self.rows, 2)
+        box.addWidget(self.table, 1)
+
+        for i in range(0, self.rows):
+            p = printers[i]
+            for j in range(0, 2):
+                item = QTableWidgetItem(p[j])
+                self.table.setItem(i, j, item)
+
+        self.table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.table.resizeColumnsToContents()
+
+    def tableToList(self):
+        printers = []
+        for i in range(0, self.rows):
+            p = [self.table.item(i, 0).text(), self.table.item(i, 1).text()]
+            printers.append(p)
+        return printers
+
+    def closeEvent(self, event):
+        oldPrinters = [item[0:2] for item in self.parent.printers]
+        newPrinters = self.tableToList()
+        if oldPrinters != newPrinters:
+            r = self.parent.showDialog(self.parent.name + " Settings Changed", "Do you want to save the new list of printers?", "This will restart the application!", True, False, False)
+            if r == True:
+                self.parent.writeSettings(newPrinters)
+                QCoreApplication.exit(42)
+        self.parent.removeSettingsWindow()
+
+    def addPrinter(self):
+        self.rows += 1
+        self.table.setRowCount(self.rows)
+        self.table.setItem(self.rows - 1, 0, QTableWidgetItem("HOSTNAME"))
+        self.table.setItem(self.rows - 1, 1, QTableWidgetItem("API_KEY"))
+
+    def removePrinter(self):
+        r = self.table.currentRow()
+        if (r >= 0) and (r < self.rows):
+            self.rows -= 1
+            self.table.removeRow(r)
 
 class AspectRatioPixmapLabel(QLabel):
     def __init__(self, *args, **kwargs):
@@ -54,18 +119,18 @@ class CamWindow(QWidget):
     addSize = 100
     reloadOn = True
 
-    def __init__(self, parent, name, icon, app, manager, printer, *args, **kwargs):
+    def __init__(self, parent, printer, *args, **kwargs):
         super(CamWindow, self).__init__(*args, **kwargs)
-        self.app = app
-        self.manager = manager
+        self.app = parent.app
+        self.manager = parent.manager
         self.manager.finished.connect(self.handleResponse)
         self.parent = parent
         self.printer = printer
         self.host = self.printer[0]
         self.url = "http://" + self.host + ":8080/?action=snapshot"
 
-        self.setWindowTitle(name + " Webcam Stream")
-        self.setWindowIcon(icon)
+        self.setWindowTitle(parent.name + " Webcam Stream")
+        self.setWindowIcon(parent.icon)
 
         box = QVBoxLayout()
         self.setLayout(box)
@@ -173,21 +238,22 @@ class OctoTray():
     iconPath = "/usr/share/pixmaps/"
     iconName = "octotray_icon.png"
 
-    # 0=host, 1=key
-    # (2=system-commands, 3=menu, 4...=actions)
-    printers = [
-        [ "PRINTER_HOST_HERE", "PRINTER_API_KEY_HERE" ]
-    ]
+    networkTimeout = 2.0 # in s
+
+    # list of lists, inner lists contain printer data:
+    # 0=host 1=key (2=system-commands 3=menu 4+=actions)
+    printers = []
     
     statesWithWarning = [
         "Printing", "Pausing", "Paused"
     ]
 
     camWindows = []
+    settingsWindow = None
 
-    def __init__(self):
-        self.app = QtWidgets.QApplication(sys.argv)
+    def __init__(self, app):
         QCoreApplication.setApplicationName(self.name)
+        self.app = app
 
         if not QSystemTrayIcon.isSystemTrayAvailable():
             self.showDialog("OctoTray Error", "System Tray is not available on this platform!", "", False, False, True)
@@ -195,6 +261,7 @@ class OctoTray():
 
         self.manager = QtNetwork.QNetworkAccessManager()
         self.menu = QMenu()
+        self.printers = self.readSettings()
 
         unknownCount = 0
         for p in self.printers:
@@ -243,34 +310,57 @@ class OctoTray():
             p.append(action)
             menu.addAction(action)
 
-        if (len(self.printers) <= 0) or (unknownCount >= len(self.printers)):
-            self.showDialog("OctoTray Error", "No printers available!", "", False, False, True)
-            sys.exit(0)
+        self.settingsAction = QAction("&Settings")
+        self.settingsAction.triggered.connect(self.showSettingsAction)
+        self.menu.addAction(self.settingsAction)
 
         self.quitAction = QAction("&Quit")
         self.quitAction.triggered.connect(self.exit)
         self.menu.addAction(self.quitAction)
 
-        iconPathName = ""
+        self.iconPathName = ""
         if os.path.isfile(self.iconName):
-            iconPathName = self.iconName
+            self.iconPathName = self.iconName
         elif os.path.isfile(self.iconPath + self.iconName):
-            iconPathName = self.iconPath + self.iconName
+            self.iconPathName = self.iconPath + self.iconName
         else:
             self.showDialog("OctoTray Error", "Icon file has not been found! found", "", False, False, True)
             sys.exit(0)
 
         self.icon = QIcon()
-        pic = QPixmap(32, 32)
-        pic.load(iconPathName)
-        self.icon = QIcon(pic)
+        self.pic = QPixmap(32, 32)
+        self.pic.load(self.iconPathName)
+        self.icon = QIcon(self.pic)
 
-        trayIcon = QSystemTrayIcon(self.icon)
-        trayIcon.setToolTip(self.name + " " + self.version)
-        trayIcon.setContextMenu(self.menu)
-        trayIcon.setVisible(True)
+        self.trayIcon = QSystemTrayIcon(self.icon)
+        self.trayIcon.setToolTip(self.name + " " + self.version)
+        self.trayIcon.setContextMenu(self.menu)
+        self.trayIcon.setVisible(True)
 
-        sys.exit(self.app.exec_())
+    def readSettings(self):
+        settings = QSettings(self.vendor, self.name)
+        printers = []
+        l = settings.beginReadArray("printers")
+        for i in range(0, l):
+            settings.setArrayIndex(i)
+            p = []
+            p.append(settings.value("host"))
+            p.append(settings.value("key"))
+            printers.append(p)
+        settings.endArray()
+        return printers
+
+    def writeSettings(self, printers):
+        settings = QSettings(self.vendor, self.name)
+        settings.remove("printers")
+        settings.beginWriteArray("printers")
+        for i in range(0, len(printers)):
+            p = printers[i]
+            settings.setArrayIndex(i)
+            settings.setValue("host", p[0])
+            settings.setValue("key", p[1])
+        settings.endArray()
+        del settings
 
     def openBrowser(self, url):
         QDesktopServices.openUrl(QUrl("http://" + url))
@@ -312,9 +402,11 @@ class OctoTray():
             data = content.encode('ascii')
             request = urllib.request.Request(url, data, headers)
         try:
-            with urllib.request.urlopen(request, None, 1.0) as response:
+            with urllib.request.urlopen(request, None, self.networkTimeout) as response:
                 text = response.read()
                 return text
+        except urllib.error.URLError:
+            pass
         except urllib.error.HTTPError:
             pass
         return ""
@@ -508,21 +600,60 @@ class OctoTray():
                 cw.activateWindow()
                 return
 
-        window = CamWindow(self, self.name, self.icon, self.app, self.manager, item)
+        window = CamWindow(self, item)
         self.camWindows.append(window)
-
-        screenGeometry = QDesktopWidget().screenGeometry()
-        width = screenGeometry.width()
-        height = screenGeometry.height()
-        x = (width - window.width()) / 2
-        y = (height - window.height()) / 2
-        window.setGeometry(int(x), int(y), int(window.width()), int(window.height()))
 
         window.show()
         window.activateWindow()
 
+        screenGeometry = QDesktopWidget().screenGeometry()
+        x = (screenGeometry.width() - window.width()) / 2
+        y = (screenGeometry.height() - window.height()) / 2
+        x += screenGeometry.x()
+        y += screenGeometry.y()
+        window.setGeometry(int(x), int(y), int(window.width()), int(window.height()))
+
     def removeWebcamWindow(self, window):
         self.camWindows.remove(window)
 
+    def showSettingsAction(self):
+        if self.settingsWindow != None:
+            self.settingsWindow.show()
+            self.settingsWindow.activateWindow()
+            return
+
+        self.settingsWindow = SettingsWindow(self)
+        self.settingsWindow.show()
+        self.settingsWindow.activateWindow()
+
+        screenGeometry = QDesktopWidget().screenGeometry()
+        x = (screenGeometry.width() - self.settingsWindow.width()) / 2
+        y = (screenGeometry.height() - self.settingsWindow.height()) / 2
+        x += screenGeometry.x()
+        y += screenGeometry.y()
+        self.settingsWindow.setGeometry(int(x), int(y), int(self.settingsWindow.width()), int(self.settingsWindow.height()))
+
+    def removeSettingsWindow(self):
+        self.settingsWindow = None
+
+    def closeAll(self):
+        for cw in self.camWindows:
+            cw.close()
+
+        if self.settingsWindow != None:
+            self.settingsWindow.close()
+
+        self.trayIcon.setVisible(False)
+
 if __name__ == "__main__":
-    tray = OctoTray()
+    app = QtWidgets.QApplication(sys.argv)
+
+    tray = OctoTray(app)
+    rc = app.exec_()
+
+    while rc == 42:
+        tray.closeAll()
+        tray = OctoTray(app)
+        rc = app.exec_()
+
+    sys.exit(rc)

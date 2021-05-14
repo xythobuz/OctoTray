@@ -12,4 +12,3 @@ Or on all other linux distros:
 	sudo cp de.xythobuz.octotray.desktop /usr/share/applications/de.xythobuz.octotray.desktop
 
 Then run it from your desktop environment menu or even add it to the autostart there.
-
