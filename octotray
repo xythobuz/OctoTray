@@ -5,7 +5,6 @@
 # depends on:
 # - python-pyqt5
 # - curl
-# - xdg-open
 #
 # see also:
 # https://doc.qt.io/qt-5/qtwidgets-widgets-imageviewer-example.html
@@ -20,7 +19,7 @@ import time
 import urllib.parse
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout
-from PyQt5.QtGui import QIcon, QPixmap, QImageReader
+from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt
 
 class AspectRatioPixmapLabel(QLabel):
@@ -276,7 +275,7 @@ class OctoTray():
         sys.exit(self.app.exec_())
 
     def openBrowser(self, url):
-        os.system("xdg-open http://" + url)
+        QDesktopServices.openUrl(QUrl("http://" + url))
 
     def showDialog(self, title, text1, text2 = "", question = False, warning = False, error = False):
         msg = QMessageBox()
