@@ -233,9 +233,9 @@ class CamWindow(QWidget):
 class OctoTray():
     name = "OctoTray"
     vendor = "xythobuz"
-    version = "0.2"
+    version = "0.3"
 
-    iconPath = "/usr/share/pixmaps/"
+    iconPaths = [ "./", "../", "data/", "../data/", "/usr/share/pixmaps/" ]
     iconName = "octotray_icon.png"
 
     networkTimeout = 2.0 # in s
@@ -318,12 +318,12 @@ class OctoTray():
         self.quitAction.triggered.connect(self.exit)
         self.menu.addAction(self.quitAction)
 
-        self.iconPathName = ""
-        if os.path.isfile(self.iconName):
-            self.iconPathName = self.iconName
-        elif os.path.isfile(self.iconPath + self.iconName):
-            self.iconPathName = self.iconPath + self.iconName
-        else:
+        self.iconPathName = None
+        for p in self.iconPaths:
+            if os.path.isfile(p + self.iconName):
+                self.iconPathName = p + self.iconName
+                break
+        if self.iconPathName == None:
             self.showDialog("OctoTray Error", "Icon file has not been found! found", "", False, False, True)
             sys.exit(0)
 
