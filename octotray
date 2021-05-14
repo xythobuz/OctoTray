@@ -58,7 +58,7 @@ class CamWindow(QWidget):
     def __init__(self, parent, name, icon, app, manager, host, *args, **kwargs):
         super(CamWindow, self).__init__(*args, **kwargs)
         self.url = "http://" + host + ":8080/?action=snapshot"
-
+        self.host = host
         self.app = app
         self.parent = parent
         self.manager = manager
@@ -100,6 +100,9 @@ class CamWindow(QWidget):
         self.resize(size)
 
         self.loadImage()
+
+    def getHost(self):
+        return self.host
 
     def sliderChanged(self):
         self.slideLabel.setText(str(self.slider.value()) + "ms")
@@ -382,6 +385,12 @@ class OctoTray():
         self.showDialog("OctoTray Status", s, None, False, warning)
 
     def printerWebcamAction(self, item):
+        for cw in self.camWindows:
+            if cw.getHost() == item[0]:
+                cw.show()
+                cw.activateWindow()
+                return
+
         window = CamWindow(self, self.name, self.icon, self.app, self.manager, item[0])
         self.camWindows.append(window)
 
