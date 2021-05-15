@@ -1,7 +1,7 @@
 #!/bin/sh
 
-del build/win
-mkdir build/win
+rm -rf build/win
+mkdir -p build/win
 
 cp src/* build/win/
 cp data/* build/win/
