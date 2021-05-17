@@ -9,3 +9,7 @@ cp dist/setup_win.py build/win/
 
 cd build/win
 python setup_win.py py2exe
+
+cd ../..
+mkdir -p build/dist
+cp -r build/win/* build/dist/

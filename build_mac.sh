@@ -15,4 +15,4 @@ zip -r OctoTray_Mac.zip OctoTray.app
 
 cd ../../..
 mkdir -p build/dist
-cp -r build/mac/OctoTray_Mac.zip build/dist/
+cp -r build/mac/dist/OctoTray_Mac.zip build/dist/

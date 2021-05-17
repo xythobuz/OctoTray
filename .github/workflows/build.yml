@@ -47,6 +47,6 @@ jobs:
       shell: bash
     - name: Show build results
       run: |
-        ls ${{ github.workspace }}/build/win
-        ls ${{ github.workspace }}/build/dist
+        ls build/win
+        ls build/dist
       shell: bash
