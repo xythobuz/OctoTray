@@ -316,7 +316,7 @@ class OctoTray():
             if method == "unknown":
                 unknownCount += 1
 
-                action = QAction(self.getName(p[0], p[1]))
+                action = QAction(p[0])
                 action.setEnabled(False)
                 p.append(action)
                 self.menu.addAction(action)
@@ -469,7 +469,7 @@ class OctoTray():
             pass
         except urllib.error.HTTPError:
             pass
-        return ""
+        return "error"
 
     def sendPostRequest(self, host, key, path, content):
         headers = {
@@ -560,6 +560,9 @@ class OctoTray():
 
     def getMethod(self, host, key):
         r = self.sendGetRequest(host, key, "plugin/psucontrol")
+        if r == "error":
+            return "unknown"
+
         try:
             rd = json.loads(r)
             if "isPSUOn" in rd:
@@ -568,6 +571,9 @@ class OctoTray():
             pass
 
         r = self.sendGetRequest(host, key, "system/commands/custom")
+        if r == "error":
+            return "unknown"
+
         try:
             rd = json.loads(r)
             for c in rd:

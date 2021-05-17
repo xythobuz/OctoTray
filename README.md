@@ -54,7 +54,7 @@ The generated bundle will then be in 'build/mac/dist/OctoTray.app' as well as 'b
 Create and install an Arch Linux package like this:
 
     ./build_arch.sh
-    sudo pacman -U dist/octotray-0.3-1-any.pkg.tar.xz
+    sudo pacman -U build/dist/octotray-0.3-1-any.pkg.tar.xz
 
 Then run it from your desktop environment menu or even add it to the autostart there.
 
