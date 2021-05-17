@@ -45,8 +45,9 @@ jobs:
       run: |
         ./build_win.sh
       shell: bash
-    - name: Show build results
-      run: |
-        ls build/win
-        ls build/dist
-      shell: bash
+    - name: Archive build result artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: octotray_win
+        path: |
+          ${{ github.workspace }}/build/dist/OctoTray_Win.zip
