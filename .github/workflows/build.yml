@@ -23,9 +23,9 @@ jobs:
     - name: Archive build result artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: mac-build
+        name: octotray_mac
         path: |
-          ${{ github.workspace }}/build/dist
+          ${{ github.workspace }}/build/dist/OctoTray_Mac.zip
   build_windows:
     runs-on: windows-latest
     steps:
@@ -40,10 +40,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install PyQt5
         pip install py2exe
+      shell: bash
     - name: Run Windows build
       run: |
         ./build_win.sh
+      shell: bash
     - name: Show build results
       run: |
         ls ${{ github.workspace }}/build/win
         ls ${{ github.workspace }}/build/dist
+      shell: bash
