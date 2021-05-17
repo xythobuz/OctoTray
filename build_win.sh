@@ -10,8 +10,6 @@ cp dist/setup_win.py build/win/
 cd build/win
 python setup_win.py py2exe
 
-zip -r OctoTray_Win.zip dist/*
-
 cd ../..
-mkdir -p build/dist
-cp -r build/win/OctoTray_Win.zip build/dist/
+mkdir -p build/dist/win
+cp -r build/win/dist/* build/dist/win/

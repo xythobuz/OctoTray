@@ -45,6 +45,9 @@ jobs:
       run: |
         ./build_win.sh
       shell: bash
+    - name: Create archive of build results
+      run: |
+        powershell Compress-Archive build/dist/win build/dist/OctoTray_Win.zip
     - name: Archive build result artifacts
       uses: actions/upload-artifact@v2
       with:
