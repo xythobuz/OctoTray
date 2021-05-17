@@ -54,8 +54,23 @@ class SettingsWindow(QWidget):
                 item = QTableWidgetItem(p[j])
                 self.table.setItem(i, j, item)
 
+        buttons2 = QHBoxLayout()
+        box.addLayout(buttons2, 0)
+
+        self.up = QPushButton("Move &Up")
+        self.up.clicked.connect(self.moveUp)
+        buttons2.addWidget(self.up)
+
+        self.down = QPushButton("Move &Down")
+        self.down.clicked.connect(self.moveDown)
+        buttons2.addWidget(self.down)
+
+        self.table.setHorizontalHeaderLabels(["Hostname", "API Key"])
         self.table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
         self.table.resizeColumnsToContents()
+
+        if self.rows <= 0:
+            self.addPrinter()
 
     def tableToList(self):
         printers = []
@@ -71,7 +86,7 @@ class SettingsWindow(QWidget):
             r = self.parent.showDialog(self.parent.name + " Settings Changed", "Do you want to save the new list of printers?", "This will restart the application!", True, False, False)
             if r == True:
                 self.parent.writeSettings(newPrinters)
-                QCoreApplication.exit(42)
+                self.parent.restartApp()
         self.parent.removeSettingsWindow()
 
     def addPrinter(self):
@@ -79,12 +94,35 @@ class SettingsWindow(QWidget):
         self.table.setRowCount(self.rows)
         self.table.setItem(self.rows - 1, 0, QTableWidgetItem("HOSTNAME"))
         self.table.setItem(self.rows - 1, 1, QTableWidgetItem("API_KEY"))
+        self.table.resizeColumnsToContents()
 
     def removePrinter(self):
         r = self.table.currentRow()
         if (r >= 0) and (r < self.rows):
             self.rows -= 1
             self.table.removeRow(r)
+
+    def moveUp(self):
+        i = self.table.currentRow()
+        if i <= 0:
+            return
+        host = self.table.item(i, 0).text()
+        key = self.table.item(i, 1).text()
+        self.table.item(i, 0).setText(self.table.item(i - 1, 0).text())
+        self.table.item(i, 1).setText(self.table.item(i - 1, 1).text())
+        self.table.item(i - 1, 0).setText(host)
+        self.table.item(i - 1, 1).setText(key)
+
+    def moveDown(self):
+        i = self.table.currentRow()
+        if i >= (self.rows - 1):
+            return
+        host = self.table.item(i, 0).text()
+        key = self.table.item(i, 1).text()
+        self.table.item(i, 0).setText(self.table.item(i + 1, 0).text())
+        self.table.item(i, 1).setText(self.table.item(i + 1, 1).text())
+        self.table.item(i + 1, 0).setText(host)
+        self.table.item(i + 1, 1).setText(key)
 
 class AspectRatioPixmapLabel(QLabel):
     def __init__(self, *args, **kwargs):
@@ -277,6 +315,12 @@ class OctoTray():
             print("Printer " + p[0] + " has method " + method)
             if method == "unknown":
                 unknownCount += 1
+
+                action = QAction(self.getName(p[0], p[1]))
+                action.setEnabled(False)
+                p.append(action)
+                self.menu.addAction(action)
+
                 continue
 
             commands = self.getSystemCommands(p[0], p[1])
@@ -303,6 +347,8 @@ class OctoTray():
                 p.append(action)
                 menu.addAction(action)
 
+            menu.addSeparator()
+
             action = QAction("Get Status")
             action.triggered.connect(lambda chk, x=p: self.printerStatusAction(x))
             p.append(action)
@@ -318,9 +364,15 @@ class OctoTray():
             p.append(action)
             menu.addAction(action)
 
+        self.menu.addSeparator()
+
         self.settingsAction = QAction("&Settings")
         self.settingsAction.triggered.connect(self.showSettingsAction)
         self.menu.addAction(self.settingsAction)
+
+        self.refreshAction = QAction("&Refresh")
+        self.refreshAction.triggered.connect(self.restartApp)
+        self.menu.addAction(self.refreshAction)
 
         self.quitAction = QAction("&Quit")
         self.quitAction.triggered.connect(self.exit)
@@ -585,16 +637,16 @@ class OctoTray():
 
     def printerStatusAction(self, item):
         progress = self.getProgress(item[0], item[1])
-        s = ""
+        s = item[0] + "\n"
         warning = False
         if ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress) and (progress["completion"] != None) and (progress["printTime"] != None) and (progress["printTimeLeft"] != None):
-            s = "%.1f%% Completion\n" % progress["completion"]
+            s += "%.1f%% Completion\n" % progress["completion"]
             s += "Printing since " + time.strftime("%H:%M:%S", time.gmtime(progress["printTime"])) + "\n"
             s += time.strftime("%H:%M:%S", time.gmtime(progress["printTimeLeft"])) + " left"
         elif ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress):
-            s = "No job is currently running"
+            s += "No job is currently running"
         else:
-            s = "Could not read printer status!"
+            s += "Could not read printer status!"
             warning = True
         t = self.getTemperatureString(item[0], item[1])
         if len(t) > 0:
@@ -643,6 +695,9 @@ class OctoTray():
 
     def removeSettingsWindow(self):
         self.settingsWindow = None
+
+    def restartApp(self):
+        QCoreApplication.exit(42)
 
     def closeAll(self):
         for cw in self.camWindows:
