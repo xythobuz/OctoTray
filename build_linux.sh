@@ -12,5 +12,5 @@ pyinstaller --noconfirm --onefile --name=OctoTray --windowed --add-data="octotra
 zip -r OctoTray_Linux.zip dist/*
 
 cd ../..
-mkdir -p build/dist/linux
-cp -r build/linux/OctoTray_Linux.zip build/dist/linux/
+mkdir -p build/dist
+cp -r build/linux/OctoTray_Linux.zip build/dist
