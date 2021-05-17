@@ -10,7 +10,6 @@ DATA_FILES = [ 'octotray_icon.png' ]
 VERSION="0.3"
 
 includes = [
-    "sip",
     "PyQt5",
     "PyQt5.QtCore",
     "PyQt5.QtGui",
