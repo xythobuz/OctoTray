@@ -3,9 +3,11 @@
 
 from setuptools import setup
 
-APP = ['octotray.py']
 APP_NAME = "OctoTray"
-DATA_FILES = ['octotray_icon.png']
+APP = [ 'octotray.py' ]
+DATA_FILES = [ 'octotray_icon.png' ]
+VERSION="0.3.0"
+
 OPTIONS = {
     'argv_emulation': True,
     'iconfile': 'octotray_icon.png',
@@ -14,15 +16,17 @@ OPTIONS = {
         'CFBundleDisplayName': APP_NAME,
         'CFBundleGetInfoString': "Control OctoPrint instances from system tray",
         'CFBundleIdentifier': "de.xythobuz.octotray",
-        'CFBundleVersion': "0.3.0",
-        'CFBundleShortVersionString': "0.3.0",
+        'CFBundleVersion': VERSION,
+        'CFBundleShortVersionString': VERSION,
         'NSHumanReadableCopyright': u"Copyright © 2021, Thomas Buck, All Rights Reserved"
     }
 }
 
 setup(
+    name=APP_NAME,
+    version=VERSION,
     app=APP,
     data_files=DATA_FILES,
-    options={'py2app': OPTIONS},
-    setup_requires=['py2app'],
+    options={ 'py2app': OPTIONS },
+    setup_requires=[ 'py2app' ]
 )
