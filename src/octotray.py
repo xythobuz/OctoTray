@@ -15,6 +15,7 @@ import os
 import time
 import urllib.parse
 import urllib.request
+from os import path
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton
 from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices
@@ -235,8 +236,15 @@ class OctoTray():
     vendor = "xythobuz"
     version = "0.3"
 
-    iconPaths = [ "./", "../", "data/", "../data/", "/usr/share/pixmaps/" ]
     iconName = "octotray_icon.png"
+    iconPaths = [
+        path.abspath(path.dirname(__file__)),
+        "data",
+        "/usr/share/pixmaps",
+        ".",
+        "..",
+        "../data"
+    ]
 
     networkTimeout = 2.0 # in s
 
@@ -320,11 +328,11 @@ class OctoTray():
 
         self.iconPathName = None
         for p in self.iconPaths:
-            if os.path.isfile(p + self.iconName):
-                self.iconPathName = p + self.iconName
+            if os.path.isfile(path.join(p, self.iconName)):
+                self.iconPathName = path.join(p, self.iconName)
                 break
         if self.iconPathName == None:
-            self.showDialog("OctoTray Error", "Icon file has not been found! found", "", False, False, True)
+            self.showDialog("OctoTray Error", "Icon file has not been found!", "", False, False, True)
             sys.exit(0)
 
         self.icon = QIcon()

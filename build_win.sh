@@ -8,7 +8,7 @@ cp data/* build/win/
 cp dist/setup_win.py build/win/
 
 cd build/win
-pyinstaller --noconfirm --onefile --name=OctoTray --windowed --add-data="octotray_icon.png;." octotray.py
+pyinstaller --noconfirm --onefile --name=OctoTray --windowed --add-data="octotray_icon.png;." --icon="octotray_icon.ico" octotray.py
 
 cd ../..
 mkdir -p build/dist/win
