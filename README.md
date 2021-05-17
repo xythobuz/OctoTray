@@ -5,6 +5,8 @@ It allows remote-control and observation of 3D printers running OctoPrint.
 For the implementation it is using PyQt5.
 Automatic builds are provided for Linux, Windows and macOS.
 
+[![Build Distribution Packages](https://github.com/xythobuz/OctoTray/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/xythobuz/OctoTray/actions/workflows/build.yml)
+
 For more [take a look at OctoTray on my website](https://www.xythobuz.de/octotray.html).
 
 ## Building
@@ -34,7 +36,7 @@ To create your own binary from source, simply run:
 
 The resulting executable will be in 'build/dist/win' as well as 'build/dist/OctoTray_Win.zip'.
 
-### Pre-Build macOS Application Bundle
+### Pre-Built macOS Application Bundle
 
 For Mac users, a pre-built application bundle is provided, made with [py2app](https://py2app.readthedocs.io) and GitHub Actions.
 
