@@ -27,6 +27,5 @@ setup(
     version=VERSION,
     windows=[ { "script": "octotray.py" } ],
     data_files=DATA_FILES,
-    zipfile=None,
     options={ 'py2exe': OPTIONS }
 )
