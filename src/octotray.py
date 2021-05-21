@@ -19,7 +19,7 @@ import urllib.request
 from os import path
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton
-from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices
+from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices, QFontDatabase
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt, QSettings
 
 class SettingsWindow(QWidget):
@@ -69,6 +69,10 @@ class SettingsWindow(QWidget):
                     text = "0"
                 item = QTableWidgetItem(text)
                 self.table.setItem(i, j, item)
+                if j == 1:
+                    font = item.font()
+                    font.setFamily(QFontDatabase.systemFont(QFontDatabase.FixedFont).family())
+                    item.setFont(font)
 
         buttons2 = QHBoxLayout()
         box.addLayout(buttons2, 0)
@@ -81,8 +85,13 @@ class SettingsWindow(QWidget):
         self.down.clicked.connect(self.moveDown)
         buttons2.addWidget(self.down)
 
+        self.openWeb = QPushButton("&Open Web UI of selected")
+        self.openWeb.clicked.connect(self.openWebUI)
+        box.addWidget(self.openWeb, 0)
+
         self.table.setHorizontalHeaderLabels(self.columns)
         self.table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows);
         self.table.resizeColumnsToContents()
 
         if self.rows <= 0:
@@ -136,6 +145,7 @@ class SettingsWindow(QWidget):
             if r == True:
                 self.parent.writeSettings(newPrinters)
                 self.parent.restartApp()
+
         self.parent.removeSettingsWindow()
 
     def addPrinter(self):
@@ -144,13 +154,19 @@ class SettingsWindow(QWidget):
         for i in range(0, len(self.columns)):
             item = QTableWidgetItem(self.presets[i])
             self.table.setItem(self.rows - 1, i, item)
+            if i == 1:
+                font = item.font()
+                font.setFamily(QFontDatabase.systemFont(QFontDatabase.FixedFont).family())
+                item.setFont(font)
         self.table.resizeColumnsToContents()
+        self.table.setCurrentItem(self.table.item(self.rows - 1, 0))
 
     def removePrinter(self):
         r = self.table.currentRow()
         if (r >= 0) and (r < self.rows):
             self.rows -= 1
             self.table.removeRow(r)
+            self.table.setCurrentItem(self.table.item(min(r, self.rows - 1), 0))
 
     def moveUp(self):
         i = self.table.currentRow()
@@ -162,6 +178,7 @@ class SettingsWindow(QWidget):
         self.table.item(i, 1).setText(self.table.item(i - 1, 1).text())
         self.table.item(i - 1, 0).setText(host)
         self.table.item(i - 1, 1).setText(key)
+        self.table.setCurrentItem(self.table.item(i - 1, 0))
 
     def moveDown(self):
         i = self.table.currentRow()
@@ -173,6 +190,11 @@ class SettingsWindow(QWidget):
         self.table.item(i, 1).setText(self.table.item(i + 1, 1).text())
         self.table.item(i + 1, 0).setText(host)
         self.table.item(i + 1, 1).setText(key)
+        self.table.setCurrentItem(self.table.item(i + 1, 0))
+
+    def openWebUI(self):
+        host = self.table.item(self.table.currentRow(), 0).text()
+        self.parent.openBrowser(host)
 
 class AspectRatioPixmapLabel(QLabel):
     def __init__(self, *args, **kwargs):
