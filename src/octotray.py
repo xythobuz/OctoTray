@@ -461,15 +461,17 @@ class OctoTray():
         else:
             data = content.encode('ascii')
             request = urllib.request.Request(url, data, headers)
+
         try:
             with urllib.request.urlopen(request, None, self.networkTimeout) as response:
                 text = response.read()
                 return text
-        except urllib.error.URLError:
-            pass
-        except urllib.error.HTTPError:
-            pass
-        return "error"
+        except (urllib.error.URLError, urllib.error.HTTPError) as error:
+            print("Error requesting URL \"" + url + "\": \"" + str(error) + "\"")
+            return "error"
+        except socket.timeout:
+            print("Timeout waiting for response to \"" + url + "\"")
+            return "timeout"
 
     def sendPostRequest(self, host, key, path, content):
         headers = {
@@ -560,7 +562,7 @@ class OctoTray():
 
     def getMethod(self, host, key):
         r = self.sendGetRequest(host, key, "plugin/psucontrol")
-        if r == "error":
+        if r == "timeout":
             return "unknown"
 
         try:
@@ -571,7 +573,7 @@ class OctoTray():
             pass
 
         r = self.sendGetRequest(host, key, "system/commands/custom")
-        if r == "error":
+        if r == "timeout":
             return "unknown"
 
         try:
