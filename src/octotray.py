@@ -340,7 +340,7 @@ class CamWindow(QWidget):
 class OctoTray():
     name = "OctoTray"
     vendor = "xythobuz"
-    version = "0.3"
+    version = "0.4"
 
     iconName = "octotray_icon.png"
     iconPaths = [

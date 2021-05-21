@@ -6,7 +6,7 @@ from setuptools import setup
 APP_NAME = "OctoTray"
 APP = [ 'octotray.py' ]
 DATA_FILES = [ 'octotray_icon.png' ]
-VERSION="0.3.0"
+VERSION="0.4.0"
 
 OPTIONS = {
     'argv_emulation': True,
