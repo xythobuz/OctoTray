@@ -482,6 +482,23 @@ class OctoTray():
         }
         return self.sendRequest(host, headers, path)
 
+    def getTemperatureIsSafe(self, host, key):
+        r = self.sendGetRequest(host, key, "printer")
+        try:
+            rd = json.loads(r)
+
+            if "temperature" in rd:
+                if ("tool0" in rd["temperature"]) and ("actual" in rd["temperature"]["tool0"]):
+                    if rd["temperature"]["tool0"]["actual"] > 50.0:
+                        return False
+
+                if ("tool1" in rd["temperature"]) and ("actual" in rd["temperature"]["tool1"]):
+                    if rd["temperature"]["tool1"]["actual"] > 50.0:
+                        return False
+        except json.JSONDecodeError:
+            pass
+        return True
+
     def getTemperatureString(self, host, key):
         r = self.sendGetRequest(host, key, "printer")
         s = ""
@@ -619,10 +636,14 @@ class OctoTray():
         if "off" in item[2][index].lower():
             state = self.getState(item[0], item[1])
             if state in self.statesWithWarning:
-                if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to run '" + item[2][index] + "'?", True, True) == True:
-                    self.setSystemCommand(item[0], item[1], item[2][index])
-                else:
+                if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to run '" + item[2][index] + "'?", True, True) == False:
                     return
+
+            safe = self.getTemperatureIsSafe(item[0], item[1])
+            if safe == False:
+                if self.showDialog("OctoTray Warning", "The printer seems to still be hot!", "Do you really want to turn it off?", True, True) == False:
+                    return
+
         self.setSystemCommand(item[0], item[1], item[2][index])
 
     def printerOnAction(self, item):
@@ -631,10 +652,15 @@ class OctoTray():
     def printerOffAction(self, item):
         state = self.getState(item[0], item[1])
         if state in self.statesWithWarning:
-            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to turn it off?", True, True) == True:
-                self.setPSUControl(item[0], item[1], False)
-        else:
-            self.setPSUControl(item[0], item[1], False)
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to turn it off?", True, True) == False:
+                return
+
+        safe = self.getTemperatureIsSafe(item[0], item[1])
+        if safe == False:
+            if self.showDialog("OctoTray Warning", "The printer seems to still be hot!", "Do you really want to turn it off?", True, True) == False:
+                return
+
+        self.setPSUControl(item[0], item[1], False)
 
     def printerWebAction(self, item):
         self.openBrowser(item[0])
