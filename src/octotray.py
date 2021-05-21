@@ -13,6 +13,7 @@ import json
 import sys
 import os
 import time
+import string
 import urllib.parse
 import urllib.request
 from os import path
@@ -22,6 +23,9 @@ from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt, QSettings
 
 class SettingsWindow(QWidget):
+    columns = [ "Hostname", "API Key", "Tool Preheat", "Bed Preheat" ]
+    presets = [ "octopi.local", "000000000_API_KEY_HERE_000000000", "0", "0" ]
+
     def __init__(self, parent, *args, **kwargs):
         super(SettingsWindow, self).__init__(*args, **kwargs)
         self.parent = parent
@@ -31,6 +35,15 @@ class SettingsWindow(QWidget):
 
         box = QVBoxLayout()
         self.setLayout(box)
+
+        helpText = "Usage:\n"
+        helpText += "1st Column: Printer Hostname or IP address\n"
+        helpText += "2nd Column: OctoPrint API Key (32 char hexadecimal)\n"
+        helpText += "3rd Column: Tool Preheat Temperature (0 to disable)\n"
+        helpText += "4th Column: Bed Preheat Temperature (0 to disable)"
+        self.helpText = QLabel(helpText)
+        box.addWidget(self.helpText, 0)
+        box.setAlignment(self.helpText, Qt.AlignHCenter)
 
         buttons = QHBoxLayout()
         box.addLayout(buttons, 0)
@@ -45,13 +58,16 @@ class SettingsWindow(QWidget):
 
         printers = self.parent.readSettings()
         self.rows = len(printers)
-        self.table = QTableWidget(self.rows, 2)
+        self.table = QTableWidget(self.rows, len(self.columns))
         box.addWidget(self.table, 1)
 
         for i in range(0, self.rows):
             p = printers[i]
-            for j in range(0, 2):
-                item = QTableWidgetItem(p[j])
+            for j in range(0, len(self.columns)):
+                text = p[j]
+                if (j >= 2) and (j <= 3) and (text == None):
+                    text = "0"
+                item = QTableWidgetItem(text)
                 self.table.setItem(i, j, item)
 
         buttons2 = QHBoxLayout()
@@ -65,7 +81,7 @@ class SettingsWindow(QWidget):
         self.down.clicked.connect(self.moveDown)
         buttons2.addWidget(self.down)
 
-        self.table.setHorizontalHeaderLabels(["Hostname", "API Key"])
+        self.table.setHorizontalHeaderLabels(self.columns)
         self.table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
         self.table.resizeColumnsToContents()
 
@@ -75,13 +91,46 @@ class SettingsWindow(QWidget):
     def tableToList(self):
         printers = []
         for i in range(0, self.rows):
-            p = [self.table.item(i, 0).text(), self.table.item(i, 1).text()]
+            p = []
+            for j in range(0, len(self.columns)):
+                text = self.table.item(i, j).text()
+                if (j >= 2) and (j <= 3) and (text == "0"):
+                    text = None
+                p.append(text)
             printers.append(p)
         return printers
 
+    def settingsValid(self, printers):
+        for p in printers:
+            # p[0] needs to be valid hostname or IP
+            # TODO
+
+            # p[1] needs to be valid API key (hexadecimal, 32 chars)
+            if (len(p[1]) != 32) or not all(c in string.hexdigits for c in p[1]):
+                return (False, "API Key not 32-digit hexadecimal")
+
+            # p[2] and p[3] need to be integer temperatures (0...999)
+            for s in [ p[2], p[3] ]:
+                if s == None:
+                    s = "0"
+                if (len(s) < 1) or (len(s) > 3) or not all(c in string.digits for c in s):
+                    return (False, "Temperature not a number from 0...999")
+        return (True, "")
+
     def closeEvent(self, event):
-        oldPrinters = [item[0:2] for item in self.parent.printers]
+        oldPrinters = [item[0:len(self.columns)] for item in self.parent.printers]
         newPrinters = self.tableToList()
+
+        valid, errorText = self.settingsValid(newPrinters)
+        if valid == False:
+            r = self.parent.showDialog(self.parent.name + " Settings Invalid", errorText + "!", "Do you want to edit it again?", True, True, False)
+            if r == True:
+                event.ignore()
+                return
+            else:
+                self.parent.removeSettingsWindow()
+                return
+
         if oldPrinters != newPrinters:
             r = self.parent.showDialog(self.parent.name + " Settings Changed", "Do you want to save the new list of printers?", "This will restart the application!", True, False, False)
             if r == True:
@@ -92,8 +141,9 @@ class SettingsWindow(QWidget):
     def addPrinter(self):
         self.rows += 1
         self.table.setRowCount(self.rows)
-        self.table.setItem(self.rows - 1, 0, QTableWidgetItem("HOSTNAME"))
-        self.table.setItem(self.rows - 1, 1, QTableWidgetItem("API_KEY"))
+        for i in range(0, len(self.columns)):
+            item = QTableWidgetItem(self.presets[i])
+            self.table.setItem(self.rows - 1, i, item)
         self.table.resizeColumnsToContents()
 
     def removePrinter(self):
@@ -283,9 +333,11 @@ class OctoTray():
     networkTimeout = 2.0 # in s
 
     # list of lists, inner lists contain printer data:
-    # 0=host 1=key (2=system-commands 3=menu 4+=actions)
+    # first elements as in SettingsWindow.columns
+    # 0=host 1=key 2=tool-preheat 3=bed-preheat
+    # rest used for system-commands, menu, actions
     printers = []
-    
+
     statesWithWarning = [
         "Printing", "Pausing", "Paused"
     ]
@@ -340,6 +392,27 @@ class OctoTray():
             for i in range(0, len(commands)):
                 action = QAction(commands[i].title())
                 action.triggered.connect(lambda chk, x=p, y=i: self.printerSystemCommandAction(x, y))
+                p.append(action)
+                menu.addAction(action)
+
+            if (p[2] != None) or (p[3] != None):
+                menu.addSeparator()
+
+            if p[2] != None:
+                action = QAction("Preheat Tool")
+                action.triggered.connect(lambda chk, x=p: self.printerHeatTool(x))
+                p.append(action)
+                menu.addAction(action)
+
+            if p[3] != None:
+                action = QAction("Preheat Bed")
+                action.triggered.connect(lambda chk, x=p: self.printerHeatBed(x))
+                p.append(action)
+                menu.addAction(action)
+
+            if (p[2] != None) or (p[3] != None):
+                action = QAction("Cooldown")
+                action.triggered.connect(lambda chk, x=p: self.printerCooldown(x))
                 p.append(action)
                 menu.addAction(action)
 
@@ -402,6 +475,8 @@ class OctoTray():
             p = []
             p.append(settings.value("host"))
             p.append(settings.value("key"))
+            p.append(settings.value("tool_preheat"))
+            p.append(settings.value("bed_preheat"))
             printers.append(p)
         settings.endArray()
         return printers
@@ -415,6 +490,8 @@ class OctoTray():
             settings.setArrayIndex(i)
             settings.setValue("host", p[0])
             settings.setValue("key", p[1])
+            settings.setValue("tool_preheat", p[2])
+            settings.setValue("bed_preheat", p[3])
         settings.endArray()
         del settings
 
@@ -682,6 +759,34 @@ class OctoTray():
         if len(t) > 0:
             s += "\n" + t
         self.showDialog("OctoTray Status", s, None, False, warning)
+
+    def setTemperature(self, host, key, what, temp):
+        path = "printer/bed"
+        s = "{\"command\": \"target\", \"target\": " + temp + "}"
+
+        if "tool" in what:
+            path = "printer/tool"
+            s = "{\"command\": \"target\", \"targets\": {\"" + what + "\": " + temp + "}}"
+
+        if temp == None:
+            temp = 0
+
+        self.sendPostRequest(host, key, path, s)
+
+    def printerHeatTool(self, p):
+        self.setTemperature(p[0], p[1], "tool0", p[2])
+
+    def printerHeatBed(self, p):
+        self.setTemperature(p[0], p[1], "bed", p[3])
+
+    def printerCooldown(self, p):
+        state = self.getState(p[0], p[1])
+        if state in self.statesWithWarning:
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to turn it off?", True, True) == False:
+                return
+
+        self.setTemperature(p[0], p[1], "tool0", 0)
+        self.setTemperature(p[0], p[1], "bed", 0)
 
     def printerWebcamAction(self, item):
         for cw in self.camWindows:
