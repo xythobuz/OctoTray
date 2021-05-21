@@ -154,9 +154,9 @@ class AspectRatioPixmapLabel(QLabel):
 
 class CamWindow(QWidget):
     reloadDelayDefault = 1000 # in ms
-    statusDelay = 10 * 1000 # in ms
-    addSize = 100
+    statusDelay = 5 * 1000 # in ms
     reloadOn = True
+    sliderFactor = 100
 
     def __init__(self, parent, printer, *args, **kwargs):
         super(CamWindow, self).__init__(*args, **kwargs)
@@ -186,13 +186,13 @@ class CamWindow(QWidget):
         box.addLayout(slide, 0)
 
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(2000)
-        self.slider.setTickInterval(100)
-        self.slider.setPageStep(100)
-        self.slider.setSingleStep(100)
+        self.slider.setMinimum(int(0 / self.sliderFactor))
+        self.slider.setMaximum(int(2000 / self.sliderFactor))
+        self.slider.setTickInterval(int(100 / self.sliderFactor))
+        self.slider.setPageStep(int(100 / self.sliderFactor))
+        self.slider.setSingleStep(int(100 / self.sliderFactor))
         self.slider.setTickPosition(QSlider.TicksBelow)
-        self.slider.setValue(self.reloadDelayDefault)
+        self.slider.setValue(int(self.reloadDelayDefault / self.sliderFactor))
         self.slider.valueChanged.connect(self.sliderChanged)
         slide.addWidget(self.slider, 1)
 
@@ -203,10 +203,6 @@ class CamWindow(QWidget):
         box.addWidget(self.statusLabel, 0)
         box.setAlignment(label, Qt.AlignHCenter)
 
-        size = self.size()
-        size.setHeight(size.height() + self.addSize)
-        self.resize(size)
-
         self.loadImage()
         self.loadStatus()
 
@@ -214,7 +210,7 @@ class CamWindow(QWidget):
         return self.host
 
     def sliderChanged(self):
-        self.slideLabel.setText(str(self.slider.value()) + "ms")
+        self.slideLabel.setText(str(self.slider.value() * self.sliderFactor) + "ms")
 
     def closeEvent(self, event):
         self.reloadOn = False
@@ -223,7 +219,7 @@ class CamWindow(QWidget):
 
     def scheduleLoadImage(self):
         if self.reloadOn:
-            QTimer.singleShot(self.slider.value(), self.loadImage)
+            QTimer.singleShot(self.slider.value() * self.sliderFactor, self.loadImage)
 
     def scheduleLoadStatus(self):
         if self.reloadOn:
@@ -699,7 +695,7 @@ class OctoTray():
         y = (screenGeometry.height() - self.settingsWindow.height()) / 2
         x += screenGeometry.x()
         y += screenGeometry.y()
-        self.settingsWindow.setGeometry(int(x), int(y), int(self.settingsWindow.width()), int(self.settingsWindow.height()))
+        self.settingsWindow.setGeometry(int(x), int(y), int(self.settingsWindow.width()), int(self.settingsWindow.height()) + 50)
 
     def removeSettingsWindow(self):
         self.settingsWindow = None
