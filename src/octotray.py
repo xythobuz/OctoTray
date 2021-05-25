@@ -19,7 +19,7 @@ import urllib.request
 from os import path
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
 from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton
-from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices, QFontDatabase
+from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices, QFontDatabase, QCursor
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt, QSettings
 
 class SettingsWindow(QWidget):
@@ -486,7 +486,12 @@ class OctoTray():
         self.trayIcon = QSystemTrayIcon(self.icon)
         self.trayIcon.setToolTip(self.name + " " + self.version)
         self.trayIcon.setContextMenu(self.menu)
+        self.trayIcon.activated.connect(self.showHide)
         self.trayIcon.setVisible(True)
+
+    def showHide(self, activationReason):
+        if activationReason == QSystemTrayIcon.Trigger:
+            self.menu.popup(QCursor.pos())
 
     def readSettings(self):
         settings = QSettings(self.vendor, self.name)
