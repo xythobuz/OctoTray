@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 from os import path
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
-from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton
+from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton, QApplication
 from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices, QFontDatabase, QCursor
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt, QSettings
 
@@ -871,7 +871,8 @@ class OctoTray():
         self.trayIcon.setVisible(False)
 
 if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     tray = OctoTray(app)
     rc = app.exec_()
