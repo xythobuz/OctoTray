@@ -226,7 +226,7 @@ class AspectRatioPixmapLabel(QLabel):
 
 class CamWindow(QWidget):
     reloadDelayDefault = 1000 # in ms
-    statusDelay = 5 * 1000 # in ms
+    statusDelayFactor = 2
     reloadOn = True
     sliderFactor = 100
 
@@ -258,7 +258,7 @@ class CamWindow(QWidget):
         box.addLayout(slide, 0)
 
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(int(0 / self.sliderFactor))
+        self.slider.setMinimum(int(100 / self.sliderFactor))
         self.slider.setMaximum(int(2000 / self.sliderFactor))
         self.slider.setTickInterval(int(100 / self.sliderFactor))
         self.slider.setPageStep(int(100 / self.sliderFactor))
@@ -295,7 +295,7 @@ class CamWindow(QWidget):
 
     def scheduleLoadStatus(self):
         if self.reloadOn:
-            QTimer.singleShot(self.statusDelay, self.loadStatus)
+            QTimer.singleShot(self.slider.value() * self.sliderFactor * self.statusDelayFactor, self.loadStatus)
 
     def loadImage(self):
         url = QUrl(self.url)
