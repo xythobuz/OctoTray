@@ -337,6 +337,24 @@ class CamWindow(QWidget):
             else:
                 print("Error loading image: " + reply.errorString())
 
+class MainWindow(QWidget):
+    def __init__(self, parent, *args, **kwargs):
+        super(MainWindow, self).__init__(*args, **kwargs)
+        self.parent = parent
+
+        self.mainLayout = QVBoxLayout()
+        self.setLayout(self.mainLayout)
+        self.mainLayout.addWidget(self.parent.menu)
+
+        self.parent.menu.aboutToHide.connect(self.aboutToHide)
+
+    def aboutToHide(self):
+        self.parent.menu.show()
+
+    def closeEvent(self, event):
+        self.parent.exit()
+        event.accept()
+
 class OctoTray():
     name = "OctoTray"
     vendor = "xythobuz"
@@ -367,13 +385,10 @@ class OctoTray():
     camWindows = []
     settingsWindow = None
 
-    def __init__(self, app):
+    def __init__(self, app, inSysTray):
         QCoreApplication.setApplicationName(self.name)
         self.app = app
-
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            self.showDialog("OctoTray Error", "System Tray is not available on this platform!", "", False, False, True)
-            sys.exit(0)
+        self.inSysTray = inSysTray
 
         self.manager = QtNetwork.QNetworkAccessManager()
         self.menu = QMenu()
@@ -483,11 +498,22 @@ class OctoTray():
         self.pic.load(self.iconPathName)
         self.icon = QIcon(self.pic)
 
-        self.trayIcon = QSystemTrayIcon(self.icon)
-        self.trayIcon.setToolTip(self.name + " " + self.version)
-        self.trayIcon.setContextMenu(self.menu)
-        self.trayIcon.activated.connect(self.showHide)
-        self.trayIcon.setVisible(True)
+        if self.inSysTray:
+            self.trayIcon = QSystemTrayIcon(self.icon)
+            self.trayIcon.setToolTip(self.name + " " + self.version)
+            self.trayIcon.setContextMenu(self.menu)
+            self.trayIcon.activated.connect(self.showHide)
+            self.trayIcon.setVisible(True)
+        else:
+            self.mainWindow = MainWindow(self)
+            self.mainWindow.show()
+            self.mainWindow.activateWindow()
+            screenGeometry = QDesktopWidget().screenGeometry()
+            x = (screenGeometry.width() - self.mainWindow.width()) / 2
+            y = (screenGeometry.height() - self.mainWindow.height()) / 2
+            x += screenGeometry.x()
+            y += screenGeometry.y()
+            self.mainWindow.setGeometry(int(x), int(y), int(self.mainWindow.width()), int(self.mainWindow.height()))
 
     def showHide(self, activationReason):
         if activationReason == QSystemTrayIcon.Trigger:
@@ -868,18 +894,25 @@ class OctoTray():
         if self.settingsWindow != None:
             self.settingsWindow.close()
 
-        self.trayIcon.setVisible(False)
+        if self.inSysTray:
+            self.trayIcon.setVisible(False)
+        else:
+            self.mainWindow.setVisible(False)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    tray = OctoTray(app)
+    inSysTray = QSystemTrayIcon.isSystemTrayAvailable()
+    if ("windowed" in sys.argv) or ("--windowed" in sys.argv) or ("-w" in sys.argv):
+        inSysTray = False
+
+    tray = OctoTray(app, inSysTray)
     rc = app.exec_()
 
     while rc == 42:
         tray.closeAll()
-        tray = OctoTray(app)
+        tray = OctoTray(app, inSysTray)
         rc = app.exec_()
 
     sys.exit(rc)

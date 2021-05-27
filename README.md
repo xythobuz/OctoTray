@@ -9,7 +9,9 @@ Automatic builds are provided for Linux, Windows and macOS.
 
 For more [take a look at OctoTray on my website](https://www.xythobuz.de/octotray.html).
 
-## Building
+If the system tray is not available (or when passing the '-w' parameter) the main menu will instead be shown in a window.
+
+## Building / Running
 
 You have different options of building and running OctoTray:
 
