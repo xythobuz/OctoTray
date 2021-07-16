@@ -16,10 +16,13 @@ import time
 import string
 import urllib.parse
 import urllib.request
+import signal
+import operator
+import socket
 from os import path
 from PyQt5 import QtWidgets, QtGui, QtCore, QtNetwork
-from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton, QApplication
-from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices, QFontDatabase, QCursor
+from PyQt5.QtWidgets import QSystemTrayIcon, QAction, QMenu, QMessageBox, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QDesktopWidget, QSizePolicy, QSlider, QLayout, QTableWidget, QTableWidgetItem, QPushButton, QApplication, QLineEdit, QGridLayout
+from PyQt5.QtGui import QIcon, QPixmap, QImageReader, QDesktopServices, QFontDatabase, QCursor, QIntValidator
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl, QTimer, QSize, Qt, QSettings
 
 class SettingsWindow(QWidget):
@@ -33,8 +36,32 @@ class SettingsWindow(QWidget):
         self.setWindowTitle(parent.name + " Settings")
         self.setWindowIcon(parent.icon)
 
+
         box = QVBoxLayout()
         self.setLayout(box)
+
+        staticSettings = QGridLayout()
+        box.addLayout(staticSettings, 0)
+
+        self.jogSpeedText = QLabel("Jog Speed")
+        staticSettings.addWidget(self.jogSpeedText, 0, 0)
+
+        self.jogSpeed = QLineEdit(str(self.parent.jogMoveSpeed))
+        self.jogSpeed.setValidator(QIntValidator(1, 6000))
+        staticSettings.addWidget(self.jogSpeed, 0, 1)
+
+        self.jogSpeedUnitText = QLabel("mm/min")
+        staticSettings.addWidget(self.jogSpeedUnitText, 0, 2)
+
+        self.jogLengthText = QLabel("Jog Length")
+        staticSettings.addWidget(self.jogLengthText, 1, 0)
+
+        self.jogLength = QLineEdit(str(self.parent.jogMoveLength))
+        self.jogLength.setValidator(QIntValidator(1, 100))
+        staticSettings.addWidget(self.jogLength, 1, 1)
+
+        self.jogLengthUnitText = QLabel("mm")
+        staticSettings.addWidget(self.jogLengthUnitText, 1, 2)
 
         helpText = "Usage:\n"
         helpText += "1st Column: Printer Hostname or IP address\n"
@@ -124,6 +151,15 @@ class SettingsWindow(QWidget):
                     s = "0"
                 if (len(s) < 1) or (len(s) > 3) or not all(c in string.digits for c in s):
                     return (False, "Temperature not a number from 0...999")
+
+        js = int(self.jogSpeed.text())
+        if (js < 1) or (js > 6000):
+            return (False, "Jog Speed not a number from 1...6000")
+
+        jl = int(self.jogLength.text())
+        if (jl < 1) or (jl > 100):
+            return (False, "Jog Length not a number from 1...100")
+
         return (True, "")
 
     def closeEvent(self, event):
@@ -140,9 +176,14 @@ class SettingsWindow(QWidget):
                 self.parent.removeSettingsWindow()
                 return
 
-        if oldPrinters != newPrinters:
-            r = self.parent.showDialog(self.parent.name + " Settings Changed", "Do you want to save the new list of printers?", "This will restart the application!", True, False, False)
+        js = int(self.jogSpeed.text())
+        jl = int(self.jogLength.text())
+
+        if (oldPrinters != newPrinters) or (js != self.parent.jogMoveSpeed) or (jl != self.parent.jogMoveLength):
+            r = self.parent.showDialog(self.parent.name + " Settings Changed", "Do you want to save the new configuration?", "This will restart the application!", True, False, False)
             if r == True:
+                self.parent.jogMoveSpeed = js
+                self.parent.jogMoveLength = jl
                 self.parent.writeSettings(newPrinters)
                 self.parent.restartApp()
 
@@ -250,12 +291,11 @@ class CamWindow(QWidget):
         box.addWidget(label, 0)
         box.setAlignment(label, Qt.AlignHCenter)
 
-        self.img = AspectRatioPixmapLabel()
-        self.img.setPixmap(QPixmap(640, 480))
-        box.addWidget(self.img, 1)
-
         slide = QHBoxLayout()
         box.addLayout(slide, 0)
+
+        self.slideStaticLabel = QLabel("Refresh")
+        slide.addWidget(self.slideStaticLabel, 0)
 
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(int(100 / self.sliderFactor))
@@ -271,12 +311,149 @@ class CamWindow(QWidget):
         self.slideLabel = QLabel(str(self.reloadDelayDefault) + "ms")
         slide.addWidget(self.slideLabel, 0)
 
+        self.img = AspectRatioPixmapLabel()
+        self.img.setPixmap(QPixmap(640, 480))
+        box.addWidget(self.img, 1)
+
         self.statusLabel = QLabel("Status: unavailable")
         box.addWidget(self.statusLabel, 0)
-        box.setAlignment(label, Qt.AlignHCenter)
+        box.setAlignment(self.statusLabel, Qt.AlignHCenter)
+
+        self.method = self.parent.getMethod(self.printer[0], self.printer[1])
+        if self.method != "unknown":
+            controls_power = QHBoxLayout()
+            box.addLayout(controls_power, 0)
+
+            self.turnOnButton = QPushButton("Turn O&n")
+            self.turnOnButton.clicked.connect(self.turnOn)
+            controls_power.addWidget(self.turnOnButton)
+
+            self.turnOffButton = QPushButton("Turn O&ff")
+            self.turnOffButton.clicked.connect(self.turnOff)
+            controls_power.addWidget(self.turnOffButton)
+
+        controls_temp = QHBoxLayout()
+        box.addLayout(controls_temp, 0)
+
+        self.cooldownButton = QPushButton("&Cooldown")
+        self.cooldownButton.clicked.connect(self.cooldown)
+        controls_temp.addWidget(self.cooldownButton)
+
+        self.preheatToolButton = QPushButton("Preheat &Tool")
+        self.preheatToolButton.clicked.connect(self.preheatTool)
+        controls_temp.addWidget(self.preheatToolButton)
+
+        self.preheatBedButton = QPushButton("Preheat &Bed")
+        self.preheatBedButton.clicked.connect(self.preheatBed)
+        controls_temp.addWidget(self.preheatBedButton)
+
+        controls_home = QHBoxLayout()
+        box.addLayout(controls_home, 0)
+
+        self.homeAllButton = QPushButton("Home &All")
+        self.homeAllButton.clicked.connect(self.homeAll)
+        controls_home.addWidget(self.homeAllButton, 1)
+
+        self.homeXButton = QPushButton("Home &X")
+        self.homeXButton.clicked.connect(self.homeX)
+        controls_home.addWidget(self.homeXButton, 0)
+
+        self.homeYButton = QPushButton("Home &Y")
+        self.homeYButton.clicked.connect(self.homeY)
+        controls_home.addWidget(self.homeYButton, 0)
+
+        self.homeZButton = QPushButton("Home &Z")
+        self.homeZButton.clicked.connect(self.homeZ)
+        controls_home.addWidget(self.homeZButton, 0)
+
+        controls_move = QHBoxLayout()
+        box.addLayout(controls_move, 0)
+
+        self.XPButton = QPushButton("X+")
+        self.XPButton.clicked.connect(self.moveXP)
+        controls_move.addWidget(self.XPButton)
+
+        self.XMButton = QPushButton("X-")
+        self.XMButton.clicked.connect(self.moveXM)
+        controls_move.addWidget(self.XMButton)
+
+        self.YPButton = QPushButton("Y+")
+        self.YPButton.clicked.connect(self.moveYP)
+        controls_move.addWidget(self.YPButton)
+
+        self.YMButton = QPushButton("Y-")
+        self.YMButton.clicked.connect(self.moveYM)
+        controls_move.addWidget(self.YMButton)
+
+        self.ZPButton = QPushButton("Z+")
+        self.ZPButton.clicked.connect(self.moveZP)
+        controls_move.addWidget(self.ZPButton)
+
+        self.ZMButton = QPushButton("Z-")
+        self.ZMButton.clicked.connect(self.moveZM)
+        controls_move.addWidget(self.ZMButton)
 
         self.loadImage()
         self.loadStatus()
+
+    def moveXP(self):
+        self.parent.printerMoveAction(self.printer, "x", int(self.parent.jogMoveLength), True)
+
+    def moveXM(self):
+        self.parent.printerMoveAction(self.printer, "x", -1 * int(self.parent.jogMoveLength), True)
+
+    def moveYP(self):
+        self.parent.printerMoveAction(self.printer, "y", int(self.parent.jogMoveLength), True)
+
+    def moveYM(self):
+        self.parent.printerMoveAction(self.printer, "y", -1 * int(self.parent.jogMoveLength), True)
+
+    def moveZP(self):
+        self.parent.printerMoveAction(self.printer, "z", int(self.parent.jogMoveLength), True)
+
+    def moveZM(self):
+        self.parent.printerMoveAction(self.printer, "z", -1 * int(self.parent.jogMoveLength), True)
+
+    def homeX(self):
+        self.parent.printerHomingAction(self.printer, "x")
+
+    def homeY(self):
+        self.parent.printerHomingAction(self.printer, "y")
+
+    def homeZ(self):
+        self.parent.printerHomingAction(self.printer, "z")
+
+    def homeAll(self):
+        self.parent.printerHomingAction(self.printer, "xyz")
+
+    def turnOn(self):
+        if self.method == "psucontrol":
+            self.parent.printerOnAction(self.printer)
+        elif self.method == "system":
+            cmds = self.parent.getSystemCommands(self.printer[0], self.printer[1])
+            for cmd in cmds:
+                if "on" in cmd:
+                    self.parent.setSystemCommand(self.printer[0], self.printer[1], cmd)
+                    break
+
+    def turnOff(self):
+        if self.method == "psucontrol":
+            self.parent.printerOffAction(self.printer)
+        elif self.method == "system":
+            cmds = self.parent.getSystemCommands(self.printer[0], self.printer[1])
+            for cmd in cmds:
+                if "off" in cmd:
+                    self.parent.setSystemCommand(self.printer[0], self.printer[1], cmd)
+                    break
+
+    def cooldown(self):
+        self.parent.printerCooldown(self.printer)
+
+    def preheatTool(self):
+        self.parent.printerHeatTool(self.printer)
+
+    def preheatBed(self):
+        self.parent.printerHeatBed(self.printer)
 
     def getHost(self):
         return self.host
@@ -385,6 +562,10 @@ class OctoTray():
     camWindows = []
     settingsWindow = None
 
+    # default, can be overridden in config
+    jogMoveSpeed = 10 * 60 # in mm/min
+    jogMoveLength = 10 # in mm
+
     def __init__(self, app, inSysTray):
         QCoreApplication.setApplicationName(self.name)
         self.app = app
@@ -455,6 +636,18 @@ class OctoTray():
 
             menu.addSeparator()
 
+            fileMenu = QMenu("Recent Files")
+            p.append(fileMenu)
+            menu.addMenu(fileMenu)
+
+            files = self.getRecentFiles(p[0], p[1], 10)
+            for f in files:
+                fileName, filePath = f
+                action = QAction(fileName)
+                action.triggered.connect(lambda chk, x=p, y=filePath: self.printerFilePrint(x, y))
+                p.append(action)
+                fileMenu.addAction(action)
+
             action = QAction("Get Status")
             action.triggered.connect(lambda chk, x=p: self.printerStatusAction(x))
             p.append(action)
@@ -518,9 +711,21 @@ class OctoTray():
     def showHide(self, activationReason):
         if activationReason == QSystemTrayIcon.Trigger:
             self.menu.popup(QCursor.pos())
+        elif activationReason == QSystemTrayIcon.MiddleClick:
+            if len(self.printers) > 0:
+                self.printerWebcamAction(self.printers[0])
 
     def readSettings(self):
         settings = QSettings(self.vendor, self.name)
+
+        js = settings.value("jog_speed")
+        if js != None:
+            self.jogMoveSpeed = int(js)
+
+        jl = settings.value("jog_length")
+        if jl != None:
+            self.jogMoveLength = int(jl)
+
         printers = []
         l = settings.beginReadArray("printers")
         for i in range(0, l):
@@ -536,6 +741,10 @@ class OctoTray():
 
     def writeSettings(self, printers):
         settings = QSettings(self.vendor, self.name)
+
+        settings.setValue("jog_speed", self.jogMoveSpeed)
+        settings.setValue("jog_length", self.jogMoveLength)
+
         settings.remove("printers")
         settings.beginWriteArray("printers")
         for i in range(0, len(printers)):
@@ -703,6 +912,20 @@ class OctoTray():
             pass
         return host
 
+    def getRecentFiles(self, host, key, count):
+        r = self.sendGetRequest(host, key, "files?recursive=true")
+        files = []
+        try:
+            rd = json.loads(r)
+            if "files" in rd:
+                t = [f for f in rd["files"] if "date" in f]
+                fs = sorted(t, key=operator.itemgetter("date"), reverse=True)
+                for f in fs[:count]:
+                    files.append((f["name"], f["origin"] + "/" + f["path"]))
+        except json.JSONDecodeError:
+            pass
+        return files
+
     def getMethod(self, host, key):
         r = self.sendGetRequest(host, key, "plugin/psucontrol")
         if r == "timeout":
@@ -792,6 +1015,32 @@ class OctoTray():
 
         self.setPSUControl(item[0], item[1], False)
 
+    def printerHomingAction(self, item, axes = "xyz"):
+        state = self.getState(item[0], item[1])
+        if state in self.statesWithWarning:
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to home it?", True, True) == False:
+                return
+
+        axes_string = ''
+        for i in range(0, len(axes)):
+            axes_string += '"' + str(axes[i]) + '"'
+            if i < (len(axes) - 1):
+                axes_string += ', '
+
+        self.sendPostRequest(item[0], item[1], "printer/printhead", '{ "command": "home", "axes": [' + axes_string + '] }')
+
+    def printerMoveAction(self, printer, axis, dist, relative = True):
+        state = self.getState(printer[0], printer[1])
+        if state in self.statesWithWarning:
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to move it?", True, True) == False:
+                return
+
+        absolute = ''
+        if relative == False:
+            absolute = ', "absolute": true'
+
+        self.sendPostRequest(printer[0], printer[1], "printer/printhead", '{ "command": "jog", "' + str(axis) + '": ' + str(dist) + ', "speed": ' + str(self.jogMoveSpeed) + absolute + ' }')
+
     def printerWebAction(self, item):
         self.openBrowser(item[0])
 
@@ -812,6 +1061,9 @@ class OctoTray():
         if len(t) > 0:
             s += "\n" + t
         self.showDialog("OctoTray Status", s, None, False, warning)
+
+    def printerFilePrint(self, item, path):
+        self.sendPostRequest(item[0], item[1], "files/" + path, '{ "command": "select", "print": true }')
 
     def setTemperature(self, host, key, what, temp):
         path = "printer/bed"
@@ -902,6 +1154,8 @@ class OctoTray():
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     inSysTray = QSystemTrayIcon.isSystemTrayAvailable()
     if ("windowed" in sys.argv) or ("--windowed" in sys.argv) or ("-w" in sys.argv):
