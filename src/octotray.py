@@ -393,8 +393,25 @@ class CamWindow(QWidget):
         self.ZMButton.clicked.connect(self.moveZM)
         controls_move.addWidget(self.ZMButton)
 
+        controls_job = QHBoxLayout()
+        box.addLayout(controls_job, 0)
+
+        self.PauseButton = QPushButton("Pause/Resume")
+        self.PauseButton.clicked.connect(self.pauseResume)
+        controls_job.addWidget(self.PauseButton)
+
+        self.CancelButton = QPushButton("Cancel Job")
+        self.CancelButton.clicked.connect(self.cancelJob)
+        controls_job.addWidget(self.CancelButton)
+
         self.loadImage()
         self.loadStatus()
+
+    def pauseResume(self):
+        self.parent.printerPauseResume(self.printer)
+
+    def cancelJob(self):
+        self.parent.printerJobCancel(self.printer)
 
     def moveXP(self):
         self.parent.printerMoveAction(self.printer, "x", int(self.parent.jogMoveLength), True)
@@ -1040,6 +1057,20 @@ class OctoTray():
             absolute = ', "absolute": true'
 
         self.sendPostRequest(printer[0], printer[1], "printer/printhead", '{ "command": "jog", "' + str(axis) + '": ' + str(dist) + ', "speed": ' + str(self.jogMoveSpeed) + absolute + ' }')
+
+    def printerPauseResume(self, printer):
+        state = self.getState(printer[0], printer[1])
+        if state in self.statesWithWarning:
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to pause/resume?", True, True) == False:
+                return
+        self.sendPostRequest(printer[0], printer[1], "job", '{ "command": "pause", "action": "toggle" }')
+
+    def printerJobCancel(self, printer):
+        state = self.getState(printer[0], printer[1])
+        if state in self.statesWithWarning:
+            if self.showDialog("OctoTray Warning", "The printer seems to be running currently!", "Do you really want to cancel?", True, True) == False:
+                return
+        self.sendPostRequest(printer[0], printer[1], "job", '{ "command": "cancel" }')
 
     def printerWebAction(self, item):
         self.openBrowser(item[0])
