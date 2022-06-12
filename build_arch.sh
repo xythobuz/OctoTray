@@ -3,7 +3,9 @@
 rm -rf build/archlinux
 mkdir -p build/archlinux
 
-cp -r src/* build/archlinux/
+./build_linux.sh
+cp -r build/linux/dist/OctoTray build/archlinux/octotray
+
 cp -r data/* build/archlinux/
 cp dist/PKGBUILD build/archlinux/
 

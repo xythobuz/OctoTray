@@ -7,7 +7,7 @@ cp src/* build/linux/
 cp data/* build/linux/
 
 cd build/linux
-pyinstaller --noconfirm --onefile --name=OctoTray --add-data="octotray_icon.png:." octotray.py
+pyinstaller --noconfirm --onefile --name=OctoTray --add-data="octotray_icon.png:." main.py
 
 cd dist
 zip -r OctoTray_Linux.zip *

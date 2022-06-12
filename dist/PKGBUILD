@@ -15,7 +15,7 @@ md5sums=(SKIP
 
 package() {
 	mkdir -p "$pkgdir/usr/bin"
-	cp octotray.py "$pkgdir/usr/bin/octotray"
+	cp octotray "$pkgdir/usr/bin/octotray"
 	mkdir -p "$pkgdir/usr/share/pixmaps"
 	cp octotray_icon.png "$pkgdir/usr/share/pixmaps/octotray_icon.png"
 	mkdir -p "$pkgdir/usr/share/applications"

@@ -4,7 +4,7 @@
 from setuptools import setup
 
 APP_NAME = "OctoTray"
-APP = [ 'octotray.py' ]
+APP = [ 'main.py' ]
 DATA_FILES = [ 'octotray_icon.png' ]
 VERSION="0.4.0"
 
@@ -18,7 +18,7 @@ OPTIONS = {
         'CFBundleIdentifier': "de.xythobuz.octotray",
         'CFBundleVersion': VERSION,
         'CFBundleShortVersionString': VERSION,
-        'NSHumanReadableCopyright': u"Copyright © 2021, Thomas Buck, All Rights Reserved"
+        'NSHumanReadableCopyright': u"Copyright © 2021 - 2022, Thomas Buck, All Rights Reserved"
     }
 }
 

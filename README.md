@@ -19,7 +19,7 @@ You have different options of building and running OctoTray:
 
 OctoTray can simply be run from the checked out repository, if all dependencies are installed.
 
-    ./src/octotray.py
+    ./src/main.py
 
 For this you need Python 3 as well as PyQt5.
 
@@ -53,31 +53,22 @@ To create your own bundle from source, simply run:
 
 The generated bundle will then be in 'build/mac/dist/OctoTray.app' as well as 'build/dist/OctoTray_Mac.zip'.
 
-### Arch Linux Package
-
-Create and install an Arch Linux package like this:
-
-    ./build_arch.sh
-    sudo pacman -U build/dist/octotray-0.3-1-any.pkg.tar.xz
-
-Then run it from your desktop environment menu or even add it to the autostart there.
-
-### Manual Installation on Linux
-
-You can also install the required files manually, which should work for most other Linux distribution and Unices:
-
-    sudo ./build_unix.sh
-
-After logging out and back in, you should find OctoTray in the menu of your graphical desktop environment.
-Take a look at the script to see exactly what is installed where.
-
 ### Pre-Built Linux Binary
 
-For completeness, a single pre-build Linux binary is also provided on GitHub, made with PyInstaller like the Windows build.
-It is however not recommended for productive use.
+A single pre-build Linux binary is also provided on GitHub, made with PyInstaller like the Windows build.
 
 To create it yourself, simply run:
 
     ./build_linux.sh
 
 The resulting binary will be in 'build/linux/dist' as well as 'build/dist/OctoTray_Linux.zip'.
+
+### Arch Linux Package
+
+Create and install an Arch Linux package like this:
+
+    ./build_arch.sh
+    sudo pacman -U build/dist/octotray-0.5-1-any.pkg.tar.xz
+
+Then run it from your desktop environment menu or even add it to the autostart there.
+This uses the same pre-built Linux binary as described above.
