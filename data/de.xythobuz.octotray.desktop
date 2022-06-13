@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Version=0.4
+Version=0.5
 Name=OctoTray
 Comment=Control OctoPrint instances from system tray
 Path=/usr/bin

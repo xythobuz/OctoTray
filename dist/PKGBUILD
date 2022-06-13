@@ -1,12 +1,12 @@
 # Maintainer: Thomas Buck <thomas@xythobuz.de>
 pkgname=OctoTray
-pkgver=0.4
+pkgver=0.5
 pkgrel=1
 pkgdesc="Control OctoPrint instances from system tray"
 arch=('any')
 license=('unknown')
 depends=('python-pyqt5')
-source=("octotray.py"
+source=("octotray"
         "octotray_icon.png"
         "de.xythobuz.octotray.desktop")
 md5sums=(SKIP

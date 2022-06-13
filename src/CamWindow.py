@@ -28,8 +28,7 @@ class CamWindow(QWidget):
         self.manager.finished.connect(self.handleResponse)
         self.parent = parent
         self.printer = printer
-        self.host = self.printer[0]
-        self.url = "http://" + self.host + ":8080/?action=snapshot"
+        self.url = "http://" + self.printer.host + ":8080/?action=snapshot"
 
         self.setWindowTitle(parent.name + " Webcam Stream")
         self.setWindowIcon(parent.icon)
@@ -69,7 +68,7 @@ class CamWindow(QWidget):
         box.addWidget(self.statusLabel, 0)
         box.setAlignment(self.statusLabel, Qt.AlignHCenter)
 
-        self.method = self.parent.getMethod(self.printer[0], self.printer[1])
+        self.method = self.printer.api.getMethod()
         if self.method != "unknown":
             controls_power = QHBoxLayout()
             box.addLayout(controls_power, 0)
@@ -158,72 +157,58 @@ class CamWindow(QWidget):
         self.loadStatus()
 
     def pauseResume(self):
-        self.parent.printerPauseResume(self.printer)
+        self.printer.api.callPauseResume()
 
     def cancelJob(self):
-        self.parent.printerJobCancel(self.printer)
+        self.printer.api.callJobCancel()
 
     def moveXP(self):
-        self.parent.printerMoveAction(self.printer, "x", int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("x", int(self.parent.jogMoveLength), True)
 
     def moveXM(self):
-        self.parent.printerMoveAction(self.printer, "x", -1 * int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("x", -1 * int(self.parent.jogMoveLength), True)
 
     def moveYP(self):
-        self.parent.printerMoveAction(self.printer, "y", int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("y", int(self.parent.jogMoveLength), True)
 
     def moveYM(self):
-        self.parent.printerMoveAction(self.printer, "y", -1 * int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("y", -1 * int(self.parent.jogMoveLength), True)
 
     def moveZP(self):
-        self.parent.printerMoveAction(self.printer, "z", int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("z", int(self.parent.jogMoveLength), True)
 
     def moveZM(self):
-        self.parent.printerMoveAction(self.printer, "z", -1 * int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("z", -1 * int(self.parent.jogMoveLength), True)
 
     def homeX(self):
-        self.parent.printerHomingAction(self.printer, "x")
+        self.printer.api.callHoming("x")
 
     def homeY(self):
-        self.parent.printerHomingAction(self.printer, "y")
+        self.printer.api.callHoming("y")
 
     def homeZ(self):
-        self.parent.printerHomingAction(self.printer, "z")
+        self.printer.api.callHoming("z")
 
     def homeAll(self):
-        self.parent.printerHomingAction(self.printer, "xyz")
+        self.printer.api.callHoming("xyz")
 
     def turnOn(self):
-        if self.method == "psucontrol":
-            self.parent.printerOnAction(self.printer)
-        elif self.method == "system":
-            cmds = self.parent.getSystemCommands(self.printer[0], self.printer[1])
-            for cmd in cmds:
-                if "on" in cmd:
-                    self.parent.setSystemCommand(self.printer[0], self.printer[1], cmd)
-                    break
+        self.printer.api.turnOn()
 
     def turnOff(self):
-        if self.method == "psucontrol":
-            self.parent.printerOffAction(self.printer)
-        elif self.method == "system":
-            cmds = self.parent.getSystemCommands(self.printer[0], self.printer[1])
-            for cmd in cmds:
-                if "off" in cmd:
-                    self.parent.setSystemCommand(self.printer[0], self.printer[1], cmd)
-                    break
+        self.printer.api.turnOff()
 
     def cooldown(self):
-        self.parent.printerCooldown(self.printer)
+        self.printer.api.printerCooldown(self.printer)
 
     def preheatTool(self):
-        self.parent.printerHeatTool(self.printer)
+        self.printer.api.printerHeatTool(self.printer.tempTool)
 
     def preheatBed(self):
-        self.parent.printerHeatBed(self.printer)
+        self.printer.api.printerHeatBed(self.printer.tempBed)
 
     def getHost(self):
-        return self.host
+        return self.printer.host
 
     def sliderChanged(self):
         self.slideLabel.setText(str(self.slider.value() * self.sliderFactor) + "ms")
@@ -248,19 +233,19 @@ class CamWindow(QWidget):
 
     def loadStatus(self):
         s = "Status: "
-        t = self.parent.getTemperatureString(self.host, self.printer[1])
+        t = self.printer.api.getTemperatureString()
         if len(t) > 0:
             s += t
         else:
             s += "Unknown"
 
-        progress = self.parent.getProgress(self.host, self.printer[1])
-        if ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress) and (progress["completion"] != None) and (progress["printTime"] != None) and (progress["printTimeLeft"] != None):
-            s += " - %.1f%%" % progress["completion"]
-            s += " - runtime "
-            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTime"]))
-            s += " - "
-            s += time.strftime("%H:%M:%S", time.gmtime(progress["printTimeLeft"])) + " left"
+        s += " - "
+
+        p = self.printer.api.getProgressString()
+        if len(p) > 0:
+            s += p
+        else:
+            s += "Unknown"
 
         self.statusLabel.setText(s)
         self.scheduleLoadStatus()

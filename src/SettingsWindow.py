@@ -12,6 +12,9 @@ from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QTableWid
 from PyQt5.QtGui import QFontDatabase, QIntValidator
 from PyQt5.QtCore import Qt
 
+class Printer(object):
+    pass
+
 class SettingsWindow(QWidget):
     columns = [ "Hostname", "API Key", "Tool Preheat", "Bed Preheat" ]
     presets = [ "octopi.local", "000000000_API_KEY_HERE_000000000", "0", "0" ]
@@ -76,16 +79,27 @@ class SettingsWindow(QWidget):
 
         for i in range(0, self.rows):
             p = printers[i]
-            for j in range(0, len(self.columns)):
-                text = p[j]
-                if (j >= 2) and (j <= 3) and (text == None):
-                    text = "0"
-                item = QTableWidgetItem(text)
-                self.table.setItem(i, j, item)
-                if j == 1:
-                    font = item.font()
-                    font.setFamily(QFontDatabase.systemFont(QFontDatabase.FixedFont).family())
-                    item.setFont(font)
+
+            item = QTableWidgetItem(p.host)
+            self.table.setItem(i, 0, item)
+
+            item = QTableWidgetItem(p.key)
+            self.table.setItem(i, 1, item)
+            font = item.font()
+            font.setFamily(QFontDatabase.systemFont(QFontDatabase.FixedFont).family())
+            item.setFont(font)
+
+            if p.tempTool == None:
+                item = QTableWidgetItem("0")
+            else:
+                item = QTableWidgetItem(p.tempTool)
+            self.table.setItem(i, 2, item)
+
+            if p.tempBed == None:
+                item = QTableWidgetItem("0")
+            else:
+                item = QTableWidgetItem(p.tempBed)
+            self.table.setItem(i, 3, item)
 
         buttons2 = QHBoxLayout()
         box.addLayout(buttons2, 0)
@@ -113,26 +127,33 @@ class SettingsWindow(QWidget):
     def tableToList(self):
         printers = []
         for i in range(0, self.rows):
-            p = []
-            for j in range(0, len(self.columns)):
-                text = self.table.item(i, j).text()
-                if (j >= 2) and (j <= 3) and (text == "0"):
-                    text = None
-                p.append(text)
+            p = Printer()
+
+            p.host = self.table.item(i, 0).text()
+            p.key = self.table.item(i, 1).text()
+            p.tempTool = self.table.item(i, 2).text()
+            p.tempBed = self.table.item(i, 3).text()
+
+            if p.tempTool == "0":
+                p.tempTool = None
+
+            if p.tempBed == "0":
+                p.tempBed = None
+
             printers.append(p)
         return printers
 
     def settingsValid(self, printers):
         for p in printers:
-            # p[0] needs to be valid hostname or IP
+            # p.host needs to be valid hostname or IP
             # TODO
 
-            # p[1] needs to be valid API key (hexadecimal, 32 chars)
-            if (len(p[1]) != 32) or not all(c in string.hexdigits for c in p[1]):
+            # p.key needs to be valid API key (hexadecimal, 32 chars)
+            if (len(p.key) != 32) or not all(c in string.hexdigits for c in p.key):
                 return (False, "API Key not 32-digit hexadecimal")
 
-            # p[2] and p[3] need to be integer temperatures (0...999)
-            for s in [ p[2], p[3] ]:
+            # p.tempTool and p.tempBed need to be integer temperatures (0...999)
+            for s in [ p.tempTool, p.tempBed ]:
                 if s == None:
                     s = "0"
                 if (len(s) < 1) or (len(s) > 3) or not all(c in string.digits for c in s):
@@ -148,8 +169,23 @@ class SettingsWindow(QWidget):
 
         return (True, "")
 
+    def printerDiffers(self, a, b):
+        if (a.host != b.host) or (a.key != b.key) or (a.tempTool != b.tempTool) or (a.tempBed != b.tempBed):
+            return True
+        return False
+
+    def printersDiffer(self, a, b):
+        if (len(a) != len(b)):
+            return True
+
+        for i in range(0, len(a)):
+            if self.printerDiffers(a[i], b[i]):
+                return True
+
+        return False
+
     def closeEvent(self, event):
-        oldPrinters = [item[0:len(self.columns)] for item in self.parent.printers]
+        oldPrinters = self.parent.printers
         newPrinters = self.tableToList()
 
         valid, errorText = self.settingsValid(newPrinters)
@@ -165,7 +201,7 @@ class SettingsWindow(QWidget):
         js = int(self.jogSpeed.text())
         jl = int(self.jogLength.text())
 
-        if (oldPrinters != newPrinters) or (js != self.parent.jogMoveSpeed) or (jl != self.parent.jogMoveLength):
+        if self.printersDiffer(oldPrinters, newPrinters) or (js != self.parent.jogMoveSpeed) or (jl != self.parent.jogMoveLength):
             r = self.parent.showDialog(self.parent.name + " Settings Changed", "Do you want to save the new configuration?", "This will restart the application!", True, False, False)
             if r == True:
                 self.parent.jogMoveSpeed = js
