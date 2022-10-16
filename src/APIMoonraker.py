@@ -22,7 +22,7 @@ class APIMoonraker():
     def __init__(self, parent, host, webcam):
         self.parent = parent
         self.host = host
-        self.webcamIndex = webcam
+        self.webcamIndex = int(webcam)
 
     # return list of tuples ( "name", func(name) )
     # with all available commands.

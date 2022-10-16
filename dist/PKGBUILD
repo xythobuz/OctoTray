@@ -2,7 +2,7 @@
 pkgname=OctoTray
 pkgver=0.5
 pkgrel=1
-pkgdesc="Control OctoPrint instances from system tray"
+pkgdesc="Control OctoPrint/Moonraker instances from system tray"
 arch=('any')
 license=('unknown')
 depends=('python-pyqt5')

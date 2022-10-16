@@ -2,7 +2,7 @@
 Type=Application
 Version=0.5
 Name=OctoTray
-Comment=Control OctoPrint instances from system tray
+Comment=Control OctoPrint/Moonraker instances from system tray
 Path=/usr/bin
 Exec=octotray
 Icon=/usr/share/pixmaps/octotray_icon.png

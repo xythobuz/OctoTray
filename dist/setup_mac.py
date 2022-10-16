@@ -14,7 +14,7 @@ OPTIONS = {
     'plist': {
         'CFBundleName': APP_NAME,
         'CFBundleDisplayName': APP_NAME,
-        'CFBundleGetInfoString': "Control OctoPrint instances from system tray",
+        'CFBundleGetInfoString': "Control OctoPrint/Moonraker instances from system tray",
         'CFBundleIdentifier': "de.xythobuz.octotray",
         'CFBundleVersion': VERSION,
         'CFBundleShortVersionString': VERSION,
