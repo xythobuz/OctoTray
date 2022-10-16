@@ -25,10 +25,10 @@ class APIOctoprint():
 
     # return list of tuples ( "name", func(name) )
     # with all available commands.
-    # call function in with name of action!
+    # call function with name of action!
     def getAvailableCommands(self):
-        self.method = self.getMethod()
-        print("Printer " + self.host + " has method " + self.method)
+        self.method = self.getMethodInternal()
+        print("OctoPrint " + self.host + " has method " + self.method)
 
         commands = []
 
@@ -52,6 +52,7 @@ class APIOctoprint():
     # HTTP API #
     ############
 
+    # only used internally
     def sendRequest(self, headers, path, content = None):
         url = "http://" + self.host + "/api/" + path
         if content == None:
@@ -71,6 +72,7 @@ class APIOctoprint():
             print("Timeout waiting for response to \"" + url + "\"")
             return "timeout"
 
+    # only used internally
     def sendPostRequest(self, path, content):
         headers = {
             "Content-Type": "application/json",
@@ -78,6 +80,7 @@ class APIOctoprint():
         }
         return self.sendRequest(headers, path, content)
 
+    # only used internally
     def sendGetRequest(self, path):
         headers = {
             "X-Api-Key": self.key
@@ -88,20 +91,19 @@ class APIOctoprint():
     # Command discovery #
     #####################
 
-    def getMethod(self):
+    # only used internally
+    def getMethodInternal(self):
         r = self.sendGetRequest("plugin/psucontrol")
-        if r == "timeout":
-            return "unknown"
-
-        try:
-            rd = json.loads(r)
-            if "isPSUOn" in rd:
-                return "psucontrol"
-        except json.JSONDecodeError:
-            pass
+        if (r != "timeout") and (r != "error"):
+            try:
+                rd = json.loads(r)
+                if "isPSUOn" in rd:
+                    return "psucontrol"
+            except json.JSONDecodeError:
+                pass
 
         r = self.sendGetRequest("system/commands/custom")
-        if r == "timeout":
+        if (r == "timeout") or (r == "error"):
             return "unknown"
 
         try:
@@ -117,6 +119,11 @@ class APIOctoprint():
 
         return "unknown"
 
+    # return "unknown" when no power can be toggled
+    def getMethod(self):
+        return self.method
+
+    # only used internally
     def getSystemCommands(self):
         l = []
         r = self.sendGetRequest("system/commands/custom")
@@ -138,6 +145,7 @@ class APIOctoprint():
     # Safety Checks #
     #################
 
+    # only used internally
     def stateSafetyCheck(self, actionString):
         state = self.getState()
         if state.lower() in self.statesWithWarning:
@@ -145,12 +153,14 @@ class APIOctoprint():
                 return True
         return False
 
+    # only used internally
     def tempSafetyCheck(self, actionString):
         if self.getTemperatureIsSafe() == False:
             if self.parent.showDialog("OctoTray Warning", "The printer seems to still be hot!", "Do you really want to " + actionString + "?", True, True) == False:
                 return True
         return False
 
+    # only used internally
     def safetyCheck(self, actionString):
         if self.stateSafetyCheck(actionString):
             return True
@@ -162,6 +172,7 @@ class APIOctoprint():
     # Power Toggling #
     ##################
 
+    # only used internally (passed to caller as a pointer)
     def callSystemCommand(self, name):
         if "off" in name.lower():
             if self.safetyCheck("run '" + name + "'"):
@@ -170,6 +181,7 @@ class APIOctoprint():
         cmd = urllib.parse.quote(name)
         self.sendPostRequest("system/commands/custom/" + cmd, '')
 
+    # only used internally (passed to caller as a pointer)
     def setPower(self, name):
         if "off" in name.lower():
             if self.safetyCheck(name):
@@ -181,6 +193,7 @@ class APIOctoprint():
 
         return self.sendPostRequest("plugin/psucontrol", '{ "command":"' + cmd + '" }')
 
+    # should automatically turn on printer, regardless of method
     def turnOn(self):
         if self.method == "psucontrol":
             self.setPower("on")
@@ -191,6 +204,7 @@ class APIOctoprint():
                     self.callSystemCommand(cmd)
                     break
 
+    # should automatically turn off printer, regardless of method
     def turnOff(self):
         if self.method == "psucontrol":
             self.setPower("off")
@@ -205,6 +219,7 @@ class APIOctoprint():
     # Status Information #
     ######################
 
+    # only used internally
     def getTemperatureIsSafe(self, limit = 50.0):
         r = self.sendGetRequest("printer")
         try:
@@ -222,6 +237,7 @@ class APIOctoprint():
             pass
         return True
 
+    # human readable temperatures
     def getTemperatureString(self):
         r = self.sendGetRequest("printer")
         s = ""
@@ -261,6 +277,7 @@ class APIOctoprint():
                 s += " "
         return s.strip()
 
+    # only used internally
     def getState(self):
         r = self.sendGetRequest("job")
         try:
@@ -271,6 +288,7 @@ class APIOctoprint():
             pass
         return "Unknown"
 
+    # only used internally
     def getProgress(self):
         r = self.sendGetRequest("job")
         try:
@@ -281,6 +299,7 @@ class APIOctoprint():
             pass
         return "Unknown"
 
+    # human readable name (fall back to hostname)
     def getName(self):
         r = self.sendGetRequest("printerprofiles")
         try:
@@ -293,6 +312,7 @@ class APIOctoprint():
             pass
         return self.host
 
+    # human readable progress
     def getProgressString(self):
         s = ""
         progress = self.getProgress()
@@ -320,7 +340,7 @@ class APIOctoprint():
 
         self.sendPostRequest("printer/printhead", '{ "command": "home", "axes": [' + axes_string + '] }')
 
-    def callMove(self, axis, dist, relative = True):
+    def callMove(self, axis, dist, speed, relative = True):
         if self.stateSafetyCheck("move it"):
             return
 
@@ -328,7 +348,7 @@ class APIOctoprint():
         if relative == False:
             absolute = ', "absolute": true'
 
-        self.sendPostRequest("printer/printhead", '{ "command": "jog", "' + str(axis) + '": ' + str(dist) + ', "speed": ' + str(self.jogMoveSpeed) + absolute + ' }')
+        self.sendPostRequest("printer/printhead", '{ "command": "jog", "' + str(axis) + '": ' + str(dist) + ', "speed": ' + str(speed) + absolute + ' }')
 
     def callPauseResume(self):
         if self.stateSafetyCheck("pause/resume"):
@@ -342,7 +362,7 @@ class APIOctoprint():
 
     def statusDialog(self):
         progress = self.getProgress()
-        s = self.host + "\n"
+        s = self.getName() + "\n"
         warning = False
         if ("completion" in progress) and ("printTime" in progress) and ("printTimeLeft" in progress) and (progress["completion"] != None) and (progress["printTime"] != None) and (progress["printTimeLeft"] != None):
             s += "%.1f%% Completion\n" % progress["completion"]
@@ -383,16 +403,17 @@ class APIOctoprint():
     # Temperature #
     ###############
 
+    # only used internally
     def setTemperature(self, what, temp):
+        if temp == None:
+            temp = 0
+
         path = "printer/bed"
-        s = "{\"command\": \"target\", \"target\": " + temp + "}"
+        s = "{\"command\": \"target\", \"target\": " + str(temp) + "}"
 
         if "tool" in what:
             path = "printer/tool"
-            s = "{\"command\": \"target\", \"targets\": {\"" + what + "\": " + temp + "}}"
-
-        if temp == None:
-            temp = 0
+            s = "{\"command\": \"target\", \"targets\": {\"" + str(what) + "\": " + str(temp) + "}}"
 
         self.sendPostRequest(path, s)
 
@@ -408,3 +429,10 @@ class APIOctoprint():
 
         self.setTemperature("tool0", 0)
         self.setTemperature("bed", 0)
+
+    ##########
+    # Webcam #
+    ##########
+
+    def getWebcamURL(self):
+        return "http://" + self.host + ":8080/?action=snapshot"

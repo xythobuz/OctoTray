@@ -14,13 +14,10 @@ from PyQt5.QtGui import QIcon, QPixmap, QDesktopServices, QCursor
 from PyQt5.QtCore import QCoreApplication, QSettings, QUrl
 from CamWindow import CamWindow
 from SettingsWindow import SettingsWindow
+from SettingsWindow import Printer
 from MainWindow import MainWindow
 from APIOctoprint import APIOctoprint
-
-class Printer(object):
-    # field 'api' for actual I/O
-    # field 'host' and 'key' for credentials
-    pass
+from APIMoonraker import APIMoonraker
 
 class OctoTray():
     name = "OctoTray"
@@ -46,8 +43,8 @@ class OctoTray():
     settingsWindow = None
 
     # default, can be overridden in config
-    jogMoveSpeed = 10 * 60 # in mm/min
-    jogMoveLength = 10 # in mm
+    jogMoveSpeedDefault = 10 * 60 # in mm/min
+    jogMoveLengthDefault = 10 # in mm
 
     def __init__(self, app, inSysTray):
         QCoreApplication.setApplicationName(self.name)
@@ -60,8 +57,20 @@ class OctoTray():
 
         unknownCount = 0
         for p in self.printers:
-            p.api = APIOctoprint(self, p.host, p.key)
             p.menus = []
+
+            if p.apiType.lower() == "octoprint":
+                p.api = APIOctoprint(self, p.host, p.key)
+            elif p.apiType.lower() == "moonraker":
+                p.api = APIMoonraker(self, p.host, p.webcam)
+            else:
+                print("Unsupported API type " + p.apiType)
+                unknownCount += 1
+                action = QAction(p.host)
+                action.setEnabled(False)
+                p.menus.append(action)
+                self.menu.addAction(action)
+                continue
 
             commands = p.api.getAvailableCommands()
 
@@ -83,7 +92,7 @@ class OctoTray():
             for cmd in commands:
                 name, func = cmd
                 action = QAction(name)
-                action.triggered.connect(lambda chk, p=p, n=name, f=func: p.api.f(n))
+                action.triggered.connect(lambda chk, n=name, f=func: f(n))
                 p.menus.append(action)
                 menu.addAction(action)
 
@@ -192,23 +201,27 @@ class OctoTray():
     def readSettings(self):
         settings = QSettings(self.vendor, self.name)
 
-        js = settings.value("jog_speed")
-        if js != None:
-            self.jogMoveSpeed = int(js)
-
-        jl = settings.value("jog_length")
-        if jl != None:
-            self.jogMoveLength = int(jl)
-
         printers = []
         l = settings.beginReadArray("printers")
         for i in range(0, l):
             settings.setArrayIndex(i)
             p = Printer()
-            p.host = settings.value("host")
-            p.key = settings.value("key")
-            p.tempTool = settings.value("tool_preheat")
-            p.tempBed = settings.value("bed_preheat")
+
+            # Generic settings
+            p.host = settings.value("host", "octopi.local")
+            p.apiType = settings.value("api_type", "OctoPrint")
+            p.tempTool = settings.value("tool_preheat", "0")
+            p.tempBed = settings.value("bed_preheat", "0")
+            p.jogSpeed = settings.value("jog_speed", self.jogMoveSpeedDefault)
+            p.jogLength = settings.value("jog_length", self.jogMoveLengthDefault)
+
+            # Octoprint specific settings
+            p.key = settings.value("key", "")
+
+            # Moonraker specific settings
+            p.webcam = settings.value("webcam", "0")
+
+            print("readSettings() " + str(i) + ":\n" + str(p) + "\n")
             printers.append(p)
         settings.endArray()
         return printers
@@ -216,18 +229,27 @@ class OctoTray():
     def writeSettings(self, printers):
         settings = QSettings(self.vendor, self.name)
 
-        settings.setValue("jog_speed", self.jogMoveSpeed)
-        settings.setValue("jog_length", self.jogMoveLength)
-
         settings.remove("printers")
         settings.beginWriteArray("printers")
         for i in range(0, len(printers)):
             p = printers[i]
+            print("writeSettings() " + str(i) + ":\n" + str(p) + "\n")
+
             settings.setArrayIndex(i)
+
+            # Generic settings
             settings.setValue("host", p.host)
-            settings.setValue("key", p.key)
+            settings.setValue("api_type", p.apiType)
             settings.setValue("tool_preheat", p.tempTool)
             settings.setValue("bed_preheat", p.tempBed)
+            settings.setValue("jog_speed", p.jogSpeed)
+            settings.setValue("jog_length", p.jogLength)
+
+            # Octoprint specific settings
+            settings.setValue("key", p.key)
+
+            # Moonraker specific settings
+            settings.setValue("webcam", p.webcam)
         settings.endArray()
         del settings
 

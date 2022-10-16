@@ -1,7 +1,7 @@
 # OctoTray Linux Qt client
 
 This is a simple Qt application living in the system tray.
-It allows remote-control and observation of 3D printers running OctoPrint.
+It allows remote-control and observation of 3D printers running OctoPrint or Moonraker.
 For the implementation it is using PyQt5.
 Automatic builds are provided for Linux, Windows and macOS.
 

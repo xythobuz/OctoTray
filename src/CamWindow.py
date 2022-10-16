@@ -28,7 +28,9 @@ class CamWindow(QWidget):
         self.manager.finished.connect(self.handleResponse)
         self.parent = parent
         self.printer = printer
-        self.url = "http://" + self.printer.host + ":8080/?action=snapshot"
+
+        self.url = self.printer.api.getWebcamURL()
+        print("Webcam: " + self.url)
 
         self.setWindowTitle(parent.name + " Webcam Stream")
         self.setWindowIcon(parent.icon)
@@ -163,22 +165,22 @@ class CamWindow(QWidget):
         self.printer.api.callJobCancel()
 
     def moveXP(self):
-        self.printer.api.callMove("x", int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("x", int(self.printer.jogLength), int(self.printer.jogSpeed), True)
 
     def moveXM(self):
-        self.printer.api.callMove("x", -1 * int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("x", -1 * int(self.printer.jogLength), int(self.printer.jogSpeed), True)
 
     def moveYP(self):
-        self.printer.api.callMove("y", int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("y", int(self.printer.jogLength), int(self.printer.jogSpeed), True)
 
     def moveYM(self):
-        self.printer.api.callMove("y", -1 * int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("y", -1 * int(self.printer.jogLength), int(self.printer.jogSpeed), True)
 
     def moveZP(self):
-        self.printer.api.callMove("z", int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("z", int(self.printer.jogLength), int(self.printer.jogSpeed), True)
 
     def moveZM(self):
-        self.printer.api.callMove("z", -1 * int(self.parent.jogMoveLength), True)
+        self.printer.api.callMove("z", -1 * int(self.printer.jogLength), int(self.printer.jogSpeed), True)
 
     def homeX(self):
         self.printer.api.callHoming("x")
@@ -199,7 +201,7 @@ class CamWindow(QWidget):
         self.printer.api.turnOff()
 
     def cooldown(self):
-        self.printer.api.printerCooldown(self.printer)
+        self.printer.api.printerCooldown()
 
     def preheatTool(self):
         self.printer.api.printerHeatTool(self.printer.tempTool)
@@ -251,17 +253,22 @@ class CamWindow(QWidget):
         self.scheduleLoadStatus()
 
     def handleResponse(self, reply):
-        if reply.url().url() == self.url:
-            if reply.error() == QtNetwork.QNetworkReply.NoError:
-                reader = QImageReader(reply)
-                reader.setAutoTransform(True)
-                image = reader.read()
-                if image != None:
-                    if image.colorSpace().isValid():
-                        image.convertToColorSpace(QColorSpace.SRgb)
-                    self.img.setPixmap(QPixmap.fromImage(image))
-                    self.scheduleLoadImage()
-                else:
-                    print("Error decoding image: " + reader.errorString())
-            else:
-                print("Error loading image: " + reply.errorString())
+        if reply.url().url() != self.url:
+            print("Reponse for unknown resource: " + reply.url().url())
+            return
+
+        if reply.error() != QtNetwork.QNetworkReply.NoError:
+            print("Error loading image: " + reply.errorString())
+            return
+
+        reader = QImageReader(reply)
+        reader.setAutoTransform(True)
+        image = reader.read()
+        if image == None:
+            print("Error decoding image: " + reader.errorString())
+            return
+
+        if image.colorSpace().isValid():
+            image.convertToColorSpace(QColorSpace.SRgb)
+        self.img.setPixmap(QPixmap.fromImage(image))
+        self.scheduleLoadImage()
